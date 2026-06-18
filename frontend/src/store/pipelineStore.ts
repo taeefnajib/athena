@@ -1,0 +1,239 @@
+import { create } from 'zustand'
+import { NODE_REGISTRY } from '../registry/nodeRegistry'
+import type { PipelineSpec, NodeStatus } from '../types/pipeline'
+
+export interface PipelineNode {
+  id: string
+  type: string
+  position: { x: number; y: number }
+  config: Record<string, unknown>
+  status: NodeStatus
+}
+
+export interface PipelineEdge {
+  id: string
+  source: string
+  target: string
+  sourcePort: number
+  targetPort: number
+}
+
+interface HistoryEntry { nodes: PipelineNode[]; edges: PipelineEdge[] }
+
+const STARTER_NODES: PipelineNode[] = [
+  { id: 'n1', type: 'csv_loader',  position: { x: 60,   y: 80  }, status: 'idle', config: { path: 'data.csv', sep: ',', header: true, encoding: 'utf-8' } },
+  { id: 'n2', type: 'imputer',     position: { x: 340,  y: 60  }, status: 'idle', config: { strategy: 'mean', fill_value: '0', cols: '' } },
+  { id: 'n3', type: 'scaler',      position: { x: 340,  y: 200 }, status: 'idle', config: { method: 'StandardScaler', cols: '' } },
+  { id: 'n4', type: 'train_test',  position: { x: 620,  y: 80  }, status: 'idle', config: { test_size: 0.2, random_state: 42, stratify: false } },
+  { id: 'n5', type: 'rf',          position: { x: 900,  y: 60  }, status: 'idle', config: { n_estimators: 100, max_depth: 10, max_features: 'sqrt', random_state: 42 } },
+  { id: 'n6', type: 'metrics',     position: { x: 1180, y: 60  }, status: 'idle', config: { task: 'classification', average: 'weighted' } },
+  { id: 'n7', type: 'conf_matrix', position: { x: 1180, y: 200 }, status: 'idle', config: { normalize: 'none', cmap: 'Blues' } },
+]
+const STARTER_EDGES: PipelineEdge[] = [
+  { id: 'e1',  source: 'n1', sourcePort: 0, target: 'n2', targetPort: 0 },
+  { id: 'e2',  source: 'n2', sourcePort: 0, target: 'n3', targetPort: 0 },
+  { id: 'e3',  source: 'n3', sourcePort: 0, target: 'n4', targetPort: 0 },
+  { id: 'e4',  source: 'n4', sourcePort: 0, target: 'n5', targetPort: 0 }, // X_train → rf
+  { id: 'e5',  source: 'n4', sourcePort: 1, target: 'n5', targetPort: 1 }, // y_train → rf
+  { id: 'e6',  source: 'n5', sourcePort: 0, target: 'n6', targetPort: 0 }, // model → metrics
+  { id: 'e7',  source: 'n4', sourcePort: 2, target: 'n6', targetPort: 1 }, // X_test → metrics
+  { id: 'e8',  source: 'n4', sourcePort: 3, target: 'n6', targetPort: 2 }, // y_test → metrics
+  { id: 'e9',  source: 'n5', sourcePort: 0, target: 'n7', targetPort: 0 }, // model → conf_matrix
+  { id: 'e10', source: 'n4', sourcePort: 2, target: 'n7', targetPort: 1 }, // X_test → conf_matrix
+  { id: 'e11', source: 'n4', sourcePort: 3, target: 'n7', targetPort: 2 }, // y_test → conf_matrix
+]
+
+const REGRESSION_NODES: PipelineNode[] = [
+  { id: 'r1', type: 'csv_loader', position: { x: 60,   y: 100 }, status: 'idle', config: {} },
+  { id: 'r2', type: 'imputer',    position: { x: 320,  y: 100 }, status: 'idle', config: { strategy: 'median' } },
+  { id: 'r3', type: 'feat_gen',   position: { x: 580,  y: 100 }, status: 'idle', config: { degree: 2 } },
+  { id: 'r4', type: 'train_test', position: { x: 840,  y: 100 }, status: 'idle', config: {} },
+  { id: 'r5', type: 'lin_reg',    position: { x: 1100, y: 80  }, status: 'idle', config: {} },
+  { id: 'r6', type: 'metrics',    position: { x: 1360, y: 80  }, status: 'idle', config: { task: 'regression' } },
+  { id: 'r7', type: 'residual',   position: { x: 1360, y: 220 }, status: 'idle', config: {} },
+]
+const REGRESSION_EDGES: PipelineEdge[] = [
+  { id: 're1',  source: 'r1', sourcePort: 0, target: 'r2', targetPort: 0 },
+  { id: 're2',  source: 'r2', sourcePort: 0, target: 'r3', targetPort: 0 },
+  { id: 're3',  source: 'r3', sourcePort: 0, target: 'r4', targetPort: 0 },
+  { id: 're4',  source: 'r4', sourcePort: 0, target: 'r5', targetPort: 0 }, // X_train → lin_reg
+  { id: 're5',  source: 'r4', sourcePort: 1, target: 'r5', targetPort: 1 }, // y_train → lin_reg
+  { id: 're6',  source: 'r5', sourcePort: 0, target: 'r6', targetPort: 0 }, // model → metrics
+  { id: 're7',  source: 'r4', sourcePort: 2, target: 'r6', targetPort: 1 }, // X_test → metrics
+  { id: 're8',  source: 'r4', sourcePort: 3, target: 'r6', targetPort: 2 }, // y_test → metrics
+  { id: 're9',  source: 'r5', sourcePort: 0, target: 'r7', targetPort: 0 }, // model → residual
+  { id: 're10', source: 'r4', sourcePort: 2, target: 'r7', targetPort: 1 }, // X_test → residual
+  { id: 're11', source: 'r4', sourcePort: 3, target: 'r7', targetPort: 2 }, // y_test → residual
+]
+
+const NLP_NODES: PipelineNode[] = [
+  { id: 't1', type: 'csv_loader', position: { x: 60,   y: 100 }, status: 'idle', config: {} },
+  { id: 't2', type: 'tfidf',      position: { x: 320,  y: 100 }, status: 'idle', config: { col: 'text', method: 'TF-IDF', max_features: 5000 } },
+  { id: 't3', type: 'train_test', position: { x: 580,  y: 100 }, status: 'idle', config: {} },
+  { id: 't4', type: 'log_reg',    position: { x: 840,  y: 80  }, status: 'idle', config: {} },
+  { id: 't5', type: 'metrics',    position: { x: 1100, y: 80  }, status: 'idle', config: {} },
+  { id: 't6', type: 'shap',       position: { x: 1100, y: 220 }, status: 'idle', config: {} },
+]
+const NLP_EDGES: PipelineEdge[] = [
+  { id: 'te1', source: 't1', sourcePort: 0, target: 't2', targetPort: 0 },
+  { id: 'te2', source: 't2', sourcePort: 0, target: 't3', targetPort: 0 },
+  { id: 'te3', source: 't3', sourcePort: 0, target: 't4', targetPort: 0 }, // X_train → log_reg
+  { id: 'te4', source: 't3', sourcePort: 1, target: 't4', targetPort: 1 }, // y_train → log_reg
+  { id: 'te5', source: 't4', sourcePort: 0, target: 't5', targetPort: 0 }, // model → metrics
+  { id: 'te6', source: 't3', sourcePort: 2, target: 't5', targetPort: 1 }, // X_test → metrics
+  { id: 'te7', source: 't3', sourcePort: 3, target: 't5', targetPort: 2 }, // y_test → metrics
+  { id: 'te8', source: 't4', sourcePort: 0, target: 't6', targetPort: 0 }, // model → shap
+  { id: 'te9', source: 't3', sourcePort: 2, target: 't6', targetPort: 1 }, // X_test → shap
+]
+
+export const TEMPLATES = {
+  classification: { nodes: STARTER_NODES, edges: STARTER_EDGES },
+  regression: { nodes: REGRESSION_NODES, edges: REGRESSION_EDGES },
+  nlp: { nodes: NLP_NODES, edges: NLP_EDGES },
+}
+
+let nodeCounter = 100
+
+interface PipelineState {
+  nodes: PipelineNode[]
+  edges: PipelineEdge[]
+  selectedNodeId: string | null
+  selectedEdgeId: string | null
+  history: HistoryEntry[]
+  historyIndex: number
+  isDirty: boolean
+  fitViewGeneration: number
+
+  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => void
+  removeNode: (id: string) => void
+  updateNodeConfig: (id: string, config: Record<string, unknown>) => void
+  moveNode: (id: string, position: { x: number; y: number }) => void
+  addEdge: (edge: PipelineEdge) => void
+  removeEdge: (id: string) => void
+  setSelectedNode: (id: string | null) => void
+  setSelectedEdge: (id: string | null) => void
+  loadPipeline: (nodes: PipelineNode[], edges: PipelineEdge[]) => void
+  clear: () => void
+  undo: () => void
+  redo: () => void
+  setNodeStatus: (id: string, status: NodeStatus) => void
+  resetAllNodeStatuses: () => void
+  toPipelineSpec: () => PipelineSpec
+}
+
+function pushHistory(state: { history: HistoryEntry[]; historyIndex: number }, nodes: PipelineNode[], edges: PipelineEdge[]) {
+  const next = [...state.history.slice(0, state.historyIndex + 1), { nodes, edges }].slice(-50)
+  return { history: next, historyIndex: next.length - 1 }
+}
+
+export const usePipelineStore = create<PipelineState>((set, get) => ({
+  nodes: [],
+  edges: [],
+  selectedNodeId: null,
+  selectedEdgeId: null,
+  history: [{ nodes: [], edges: [] }],
+  historyIndex: 0,
+  isDirty: false,
+  fitViewGeneration: 0,
+
+  addNode: (type, position, config) => {
+    const spec = NODE_REGISTRY[type]
+    if (!spec) return
+    const defaultConfig: Record<string, unknown> = {}
+    spec.config.forEach(f => { defaultConfig[f.id] = f.default })
+    const newNode: PipelineNode = { id: `n_${++nodeCounter}`, type, position, config: config ?? defaultConfig, status: 'idle' }
+    set(s => {
+      const nodes = [...s.nodes, newNode]
+      return { nodes, isDirty: true, ...pushHistory(s, nodes, s.edges) }
+    })
+  },
+
+  removeNode: (id) => {
+    set(s => {
+      const nodes = s.nodes.filter(n => n.id !== id)
+      const edges = s.edges.filter(e => e.source !== id && e.target !== id)
+      return { nodes, edges, selectedNodeId: null, isDirty: true, ...pushHistory(s, nodes, edges) }
+    })
+  },
+
+  updateNodeConfig: (id, config) => {
+    set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, config } : n), isDirty: true }))
+  },
+
+  moveNode: (id, position) => {
+    set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, position } : n), isDirty: true }))
+  },
+
+  addEdge: (edge) => {
+    set(s => {
+      if (s.edges.some(e => e.source === edge.source && e.sourcePort === edge.sourcePort && e.target === edge.target && e.targetPort === edge.targetPort)) {
+        return s
+      }
+      const edges = [...s.edges, edge]
+      return { edges, isDirty: true, ...pushHistory(s, s.nodes, edges) }
+    })
+  },
+
+  removeEdge: (id) => {
+    set(s => {
+      const edges = s.edges.filter(e => e.id !== id)
+      return { edges, selectedEdgeId: null, isDirty: true, ...pushHistory(s, s.nodes, edges) }
+    })
+  },
+
+  setSelectedNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
+  setSelectedEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
+
+  loadPipeline: (nodes, edges) => {
+    // Advance nodeCounter past any loaded node IDs so new drops never collide.
+    for (const n of nodes) {
+      const m = n.id.match(/^n_(\d+)$/)
+      if (m) nodeCounter = Math.max(nodeCounter, parseInt(m[1], 10))
+    }
+    set(s => ({ nodes, edges, selectedNodeId: null, selectedEdgeId: null, isDirty: false, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(s, nodes, edges) }))
+  },
+
+  clear: () => {
+    set(s => {
+      const nodes: PipelineNode[] = []
+      const edges: PipelineEdge[] = []
+      return { nodes, edges, selectedNodeId: null, selectedEdgeId: null, isDirty: true, ...pushHistory(s, nodes, edges) }
+    })
+  },
+
+  undo: () => {
+    set(s => {
+      if (s.historyIndex <= 0) return s
+      const idx = s.historyIndex - 1
+      const h = s.history[idx]
+      return { nodes: h.nodes, edges: h.edges, historyIndex: idx }
+    })
+  },
+
+  redo: () => {
+    set(s => {
+      if (s.historyIndex >= s.history.length - 1) return s
+      const idx = s.historyIndex + 1
+      const h = s.history[idx]
+      return { nodes: h.nodes, edges: h.edges, historyIndex: idx }
+    })
+  },
+
+  setNodeStatus: (id, status) => {
+    set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, status } : n) }))
+  },
+
+  resetAllNodeStatuses: () => {
+    set(s => ({ nodes: s.nodes.map(n => ({ ...n, status: 'idle' as NodeStatus })) }))
+  },
+
+  toPipelineSpec: () => {
+    const { nodes, edges } = get()
+    return {
+      version: 1,
+      name: 'untitled',
+      nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config })),
+      edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, source_port: e.sourcePort, target_port: e.targetPort })),
+    }
+  },
+}))
