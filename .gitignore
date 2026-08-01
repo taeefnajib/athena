@@ -42,6 +42,9 @@ autosave.athena
 *.pkl
 *.joblib
 *.csv
+!backend/data.csv
+!backend/regression_data.csv
+!backend/nlp_data.csv
 *.xlsx
 *.parquet
 *.sqlite

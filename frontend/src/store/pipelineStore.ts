@@ -44,7 +44,7 @@ const STARTER_EDGES: PipelineEdge[] = [
 ]
 
 const REGRESSION_NODES: PipelineNode[] = [
-  { id: 'r1', type: 'csv_loader', position: { x: 60,   y: 100 }, status: 'idle', config: {} },
+  { id: 'r1', type: 'csv_loader', position: { x: 60,   y: 100 }, status: 'idle', config: { path: 'regression_data.csv', sep: ',', header: true, encoding: 'utf-8' } },
   { id: 'r2', type: 'imputer',    position: { x: 320,  y: 100 }, status: 'idle', config: { strategy: 'median' } },
   { id: 'r3', type: 'feat_gen',   position: { x: 580,  y: 100 }, status: 'idle', config: { degree: 2 } },
   { id: 'r4', type: 'train_test', position: { x: 840,  y: 100 }, status: 'idle', config: {} },
@@ -67,7 +67,7 @@ const REGRESSION_EDGES: PipelineEdge[] = [
 ]
 
 const NLP_NODES: PipelineNode[] = [
-  { id: 't1', type: 'csv_loader', position: { x: 60,   y: 100 }, status: 'idle', config: {} },
+  { id: 't1', type: 'csv_loader', position: { x: 60,   y: 100 }, status: 'idle', config: { path: 'nlp_data.csv', sep: ',', header: true, encoding: 'utf-8' } },
   { id: 't2', type: 'tfidf',      position: { x: 320,  y: 100 }, status: 'idle', config: { col: 'text', method: 'TF-IDF', max_features: 5000 } },
   { id: 't3', type: 'train_test', position: { x: 580,  y: 100 }, status: 'idle', config: {} },
   { id: 't4', type: 'log_reg',    position: { x: 840,  y: 80  }, status: 'idle', config: {} },

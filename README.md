@@ -4,6 +4,30 @@ A graph-based, locally-run machine learning workflow builder. Design ML pipeline
 
 ---
 
+## Screenshots
+
+The canvas — drag nodes from the library on the left, wire them together, and run:
+
+![Empty canvas with node library](images/01-canvas-empty.jpg)
+
+**Classification Starter** — CSV → Imputer → Scaler → Train/Test → Random Forest → Metrics + Confusion Matrix. All nodes complete and turn green:
+
+![Classification Starter pipeline completed](images/02-classification-run-completed.jpg)
+
+Click any completed node to see real metrics computed by scikit-learn — no mock numbers:
+
+![Classification metrics panel](images/03-classification-metrics.jpg)
+
+**Regression Pipeline** — CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals:
+
+![Regression Pipeline completed with RMSE/MAE/R² metrics](images/04-regression-run-completed.jpg)
+
+**NLP Pipeline** — CSV → TF-IDF Vectorizer → Train/Test → Logistic Regression → Metrics + SHAP:
+
+![NLP Pipeline completed](images/05-nlp-run-completed.jpg)
+
+---
+
 ## Prerequisites
 
 | Tool | Version | Purpose |
@@ -111,13 +135,15 @@ npm run dev
 
 ### Starter templates
 
-Click **Templates** in the top bar to load a pre-built pipeline:
+Click **Templates** in the top bar to load a pre-built pipeline. Each template's CSV Loader node points at a small synthetic dataset that ships in `backend/`, so every template runs successfully out of the box with no setup:
 
-| Template | Nodes |
-|----------|-------|
-| Classification Starter | CSV → Imputer → Scaler → Train/Test → Random Forest → Metrics + Confusion Matrix |
-| Regression Pipeline | CSV → Imputer → Train/Test → Linear Regression → Metrics + Residuals |
-| NLP Pipeline | CSV → TF-IDF → Train/Test → Logistic Regression → Metrics + SHAP |
+| Template | Nodes | Dataset |
+|----------|-------|---------|
+| Classification Starter | CSV → Imputer → Scaler → Train/Test → Random Forest → Metrics + Confusion Matrix | `backend/data.csv` (300 rows, 4 features + binary `target`) |
+| Regression Pipeline | CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals | `backend/regression_data.csv` (300 rows, 3 numeric features + continuous `target`) |
+| NLP Pipeline | CSV → TF-IDF → Train/Test → Logistic Regression → Metrics + SHAP | `backend/nlp_data.csv` (300 short review-style sentences + binary `target`) |
+
+All three datasets include a handful of missing values so the Missing Value Imputer node has real work to do, and each is regenerable via the script the datasets were originally produced with (`np.random.default_rng(42)`, so results are reproducible).
 
 ---
 
