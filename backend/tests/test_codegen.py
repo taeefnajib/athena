@@ -86,3 +86,46 @@ def test_json_pretty_printed():
     json_str = pipeline_to_json(_classification_spec())
     assert "\n" in json_str  # has newlines
     assert "  " in json_str  # indented
+
+
+def test_python_csv_header_is_valid_for_pandas():
+    spec = _classification_spec()
+    assert "header=0" in pipeline_to_python(spec)
+    spec.nodes[0].config["header"] = False
+    assert "header=None" in pipeline_to_python(spec)
+
+
+def test_exported_classification_script_runs(tmp_path):
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(rng.normal(size=(120, 3)), columns=["a", "b", "c"])
+    df["target"] = (df["a"] + df["b"] > 0).astype(int)
+    df.loc[3, "a"] = np.nan
+    csv = tmp_path / "data.csv"
+    df.to_csv(csv, index=False)
+
+    spec = PipelineSpec(
+        version=1, name="runnable",
+        nodes=[
+            {"id": "n1", "type": "csv_loader", "position": {"x": 0, "y": 0}, "config": {"path": str(csv), "sep": ",", "header": True, "encoding": "utf-8"}},
+            {"id": "n2", "type": "imputer", "position": {"x": 0, "y": 0}, "config": {"strategy": "mean", "fill_value": "0", "cols": ""}},
+            {"id": "n3", "type": "train_test", "position": {"x": 0, "y": 0}, "config": {"test_size": 0.2, "random_state": 42, "stratify": False}},
+            {"id": "n4", "type": "rf", "position": {"x": 0, "y": 0}, "config": {"n_estimators": 20, "max_depth": 5, "max_features": "sqrt", "random_state": 42}},
+            {"id": "n5", "type": "metrics", "position": {"x": 0, "y": 0}, "config": {"task": "classification", "average": "weighted"}},
+        ],
+        edges=[
+            {"id": "e1", "source": "n1", "target": "n2", "source_port": 0, "target_port": 0},
+            {"id": "e2", "source": "n2", "target": "n3", "source_port": 0, "target_port": 0},
+            {"id": "e3", "source": "n3", "target": "n4", "source_port": 0, "target_port": 0},
+            {"id": "e4", "source": "n3", "target": "n4", "source_port": 1, "target_port": 1},
+            {"id": "e5", "source": "n4", "target": "n5", "source_port": 0, "target_port": 0},
+            {"id": "e6", "source": "n3", "target": "n5", "source_port": 2, "target_port": 1},
+            {"id": "e7", "source": "n3", "target": "n5", "source_port": 3, "target_port": 2},
+        ],
+    )
+    namespace: dict[str, object] = {}
+    exec(pipeline_to_python(spec), namespace)  # noqa: S102 - generated code under test
+    metrics = namespace["metrics_n5"]
+    assert isinstance(metrics, dict) and 0.0 <= metrics["accuracy"] <= 1.0
