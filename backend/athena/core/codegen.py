@@ -124,11 +124,15 @@ def pipeline_to_python(spec: PipelineSpec) -> str:
             src = (upstream.get(0, "???")).replace("-", "_")
             src_model = (upstream.get(0, "???")).replace("-", "_")
             src_test = (upstream.get(1, "???")).replace("-", "_")
+            fmt_cfg = dict(cfg)
+            if node.type == "csv_loader":
+                # pandas rejects header=True/False; mirror the runtime handler (0 or None).
+                fmt_cfg["header"] = 0 if cfg.get("header", True) else None
             try:
                 lines.append(tmpl.format(
                     id=node_id, var=var, src=src,
                     src_model=src_model, src_test=src_test,
-                    **{k: v for k, v in cfg.items()},
+                    **fmt_cfg,
                 ))
             except KeyError:
                 lines.append(f"# --- Node {node_id}: {node.type} (template error) ---\n")
