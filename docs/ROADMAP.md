@@ -29,7 +29,7 @@ This file is the plan of record. Each phase ships something usable on its own. T
 
 Goal: make adding a node, connector or runtime a one-place change, and stop running user code in the API process.
 
-**Status (2026-11-27):** 0.1, 0.3, 0.4, 0.5 and 0.6 done. 0.2: the export declaration is enforced, but only 10 nodes have templates so far. 0.7: tests, toast and `max_features` are fixed, stubs are hidden (6 remain); PR #1 is still open. See `docs/PLUGINS.md` for the plugin and connector SDKs.
+**Status (2026-11-27):** 0.1, 0.3, 0.4, 0.5 and 0.6 done. 0.2: the export declaration is enforced, but only 10 nodes have templates so far. 0.7: tests, toast and `max_features` are fixed, stubs are hidden (5 remain: api_fetch, embedding, blending, lime, api_gen); PR #1 is still open. See `docs/PLUGINS.md` for the plugin and connector SDKs.
 
 | # | Deliverable | Done when |
 |---|---|---|
@@ -45,7 +45,7 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 
 - ✅ **MLflow** (2026-11-27): tracked pipelines log params, metrics, models, the pipeline file and its exported script to a local store (`~/.athena/mlflow`) or the user's MLflow server; *Register Model* and *Load Registered Model* nodes; a Runs view with side-by-side comparison. Later: model cards, dataset logging, MLflow UI deep links for the local store.
 - **Data:** DuckDB as the local engine; Parquet, Arrow and Excel loaders; object storage (S3, MinIO, GCS, Azure Blob through `fsspec`); SQL via the 0.6 connector; dlt for API and SaaS ingestion; schema discovery and column profiling.
-- **Models:** LightGBM, CatBoost, statsmodels; AutoML (FLAML) and hyperparameter search (Optuna) replacing the `automl` stub; probability calibration and threshold tuning; PR-AUC.
+- **Models:** ✅ AutoML Search (FLAML, 2026-11-27) replaced the `automl` stub: leaderboard preview, progress logs, tracked leaderboard, exportable. Still to do: LightGBM, CatBoost and statsmodels as their own nodes; Optuna-based hyperparameter search for the HP Tuning node; probability calibration and threshold tuning; PR-AUC.
 - **Tasks:** forecasting (time-series split, backtesting, MAPE/sMAPE/MASE), clustering (silhouette, Davies–Bouldin).
 - **Editor:** a Monaco code view per node; reusable subflows; auto-layout; workflow diff between versions.
 - **Reproducibility:** dataset snapshots (content-hashed Parquet) and a cache that is reused across runs.

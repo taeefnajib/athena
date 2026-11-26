@@ -298,7 +298,11 @@ Rules:
 - **Observer:** `runtime/observers.py` is the generic hook (`on_run_start`, `on_node_finish`, `on_run_finish`, optional `abandon`). `tracking/observer.py` logs a tracked run: params `<node_id>.<field>`, metrics `<node_id>.<metric>`, `athena/pipeline.json` + `athena/pipeline.py`, and every `model` output (cloudpickle, pinned pip requirements). Observer errors become `run_info` warnings and close the MLflow run as FAILED; they never fail the pipeline. If the supervisor kills a worker, it marks the tracked run KILLED/FAILED.
 - **Nodes:** `mlflow_register` (into the tracking destination, reusing the model the run already logged; local store when untracked) and `mlflow_load` (by alias or version, from any destination).
 - **API:** `GET /api/tracking/status`, `POST /api/tracking/local/init` (the one-time ~20 s store creation), `GET /api/tracking/experiments`, `GET /api/tracking/runs`.
-- Tests create one template store per session and copy it per test (`tests/test_tracking.py`); creating a store costs ~20 s.
+- Tests use the `mlflow_local_store` fixture (conftest): one template store per session, copied per test; creating a store costs ~20 s.
+
+### AutoML
+
+`nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.
 
 ---
 

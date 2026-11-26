@@ -152,6 +152,16 @@ Install the extra once: `cd backend && uv sync --extra mlflow`. Then click **Tra
 - The **Register Model** node registers a trained model (with an optional alias such as `champion`); **Load Registered Model** brings one back into any pipeline, by alias or version.
 - To browse the local store in MLflow's own UI: `uv run mlflow ui --backend-store-uri sqlite:///$HOME/.athena/mlflow/mlflow.db`.
 
+### AutoML
+
+Install the extra once: `cd backend && uv sync --extra automl` (FLAML with LightGBM and XGBoost; note that it pins XGBoost below 3.0). Then use the **AutoML Search** node, or load the **AutoML Classification** template.
+
+- It tries several model families (LightGBM, XGBoost, random forest, extra trees, linear models, …) and their hyperparameters within a time budget, and outputs the best model, ready for the Metrics, Confusion Matrix and Register Model nodes.
+- Task and metric are inferred unless you set them (ROC AUC for binary classification, log loss for multiclass, R² for regression).
+- The preview is a leaderboard: each family's best validation score and how many trials it got. Progress streams to the Logs tab.
+- Validation scores come from cross-validation on the training data, so they are usually a little optimistic: judge the model by the Metrics node on the test split.
+- In a tracked pipeline the leaderboard and the winning configuration are logged to the run.
+
 ### Execution settings
 
 Each node's inspector has an **Execution** section: a timeout, retries with backoff, and whether to reuse cached results. Every pipeline runs in a separate worker process, so a crashing or hung node can't take the app down, and **Stop** always works.
@@ -169,6 +179,7 @@ Click **Templates** in the top bar to load a pre-built pipeline. Each template's
 | Classification Starter | CSV → Imputer → Scaler → Train/Test → Random Forest → Metrics + Confusion Matrix | `backend/data.csv` (300 rows, 4 features + binary `target`) |
 | Regression Pipeline | CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals | `backend/regression_data.csv` (300 rows, 3 numeric features + continuous `target`) |
 | NLP Pipeline | CSV → TF-IDF → Train/Test → Logistic Regression → Metrics + SHAP | `backend/nlp_data.csv` (300 short review-style sentences + binary `target`) |
+| AutoML Classification | CSV → Imputer → Train/Test → AutoML Search (30 s) → Metrics + Confusion Matrix | `backend/data.csv` (needs the `automl` extra) |
 
 All three datasets include a handful of missing values so the Missing Value Imputer node has real work to do, and each is regenerable via the script the datasets were originally produced with (`np.random.default_rng(42)`, so results are reproducible).
 

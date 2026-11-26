@@ -88,10 +88,32 @@ const NLP_EDGES: PipelineEdge[] = [
   { id: 'te9', source: 't3', sourcePort: 2, target: 't6', targetPort: 1 }, // X_test → shap
 ]
 
+const AUTOML_NODES: PipelineNode[] = [
+  { id: 'a1', type: 'csv_loader',  position: { x: 60,   y: 100 }, status: 'idle', config: { path: 'data.csv', sep: ',', header: true, encoding: 'utf-8' } },
+  { id: 'a2', type: 'imputer',     position: { x: 320,  y: 100 }, status: 'idle', config: { strategy: 'mean', fill_value: '0', cols: '' } },
+  { id: 'a3', type: 'train_test',  position: { x: 580,  y: 100 }, status: 'idle', config: { test_size: 0.2, random_state: 42, stratify: false } },
+  { id: 'a4', type: 'automl',      position: { x: 840,  y: 80  }, status: 'idle', config: { task: 'auto', metric: 'auto', time_budget: 30, n_trials: 0, estimators: '', eval_method: 'auto', random_state: 42 } },
+  { id: 'a5', type: 'metrics',     position: { x: 1100, y: 60  }, status: 'idle', config: { task: 'classification', average: 'weighted' } },
+  { id: 'a6', type: 'conf_matrix', position: { x: 1100, y: 220 }, status: 'idle', config: { normalize: 'none', cmap: 'Blues' } },
+]
+const AUTOML_EDGES: PipelineEdge[] = [
+  { id: 'ae1', source: 'a1', sourcePort: 0, target: 'a2', targetPort: 0 },
+  { id: 'ae2', source: 'a2', sourcePort: 0, target: 'a3', targetPort: 0 },
+  { id: 'ae3', source: 'a3', sourcePort: 0, target: 'a4', targetPort: 0 }, // X_train -> automl
+  { id: 'ae4', source: 'a3', sourcePort: 1, target: 'a4', targetPort: 1 }, // y_train -> automl
+  { id: 'ae5', source: 'a4', sourcePort: 0, target: 'a5', targetPort: 0 }, // best model -> metrics
+  { id: 'ae6', source: 'a3', sourcePort: 2, target: 'a5', targetPort: 1 },
+  { id: 'ae7', source: 'a3', sourcePort: 3, target: 'a5', targetPort: 2 },
+  { id: 'ae8', source: 'a4', sourcePort: 0, target: 'a6', targetPort: 0 }, // best model -> confusion matrix
+  { id: 'ae9', source: 'a3', sourcePort: 2, target: 'a6', targetPort: 1 },
+  { id: 'ae10', source: 'a3', sourcePort: 3, target: 'a6', targetPort: 2 },
+]
+
 export const TEMPLATES = {
   classification: { nodes: STARTER_NODES, edges: STARTER_EDGES },
   regression: { nodes: REGRESSION_NODES, edges: REGRESSION_EDGES },
   nlp: { nodes: NLP_NODES, edges: NLP_EDGES },
+  automl: { nodes: AUTOML_NODES, edges: AUTOML_EDGES },
 }
 
 let nodeCounter = 100

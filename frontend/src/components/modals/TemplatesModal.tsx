@@ -5,6 +5,7 @@ const TEMPLATE_META = [
   { id: 'classification' as const, label: 'Classification Starter', desc: 'CSV → Imputer → Scaler → Train/Test → Random Forest → Metrics + Confusion Matrix', nodes: 7 },
   { id: 'regression'    as const, label: 'Regression Pipeline',    desc: 'CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals', nodes: 7 },
   { id: 'nlp'           as const, label: 'NLP Pipeline',           desc: 'CSV → TF-IDF Vectorizer → Train/Test → Logistic Regression → Metrics + SHAP', nodes: 6 },
+  { id: 'automl'        as const, label: 'AutoML Classification',  desc: 'CSV → Imputer → Train/Test → AutoML Search (30 s, FLAML) → Metrics + Confusion Matrix', nodes: 6 },
 ]
 
 export function TemplatesModal() {

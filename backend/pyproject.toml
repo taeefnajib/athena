@@ -31,6 +31,7 @@ mysql = ["pymysql>=1.1.0"]
 duckdb = ["duckdb>=1.1.0", "duckdb-engine>=0.13.0"]
 mssql = ["pyodbc>=5.1.0"]
 mlflow = ["mlflow>=3.0"]
+automl = ["flaml[automl]>=2.3.0"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",

@@ -1,5 +1,4 @@
 """MLflow tracking and the model registry nodes, against Athena's local store (needs the mlflow extra)."""
-import shutil
 from pathlib import Path
 
 import pytest
@@ -16,25 +15,9 @@ from athena.tracking.session import local_db, local_uri  # noqa: E402
 DATA_CSV = str(Path(__file__).parents[1] / "data.csv")
 
 
-@pytest.fixture(scope="session")
-def template_store(tmp_path_factory) -> Path:
-    """Creating an MLflow SQLite store runs its migrations (~20 s): do it once, copy it per test."""
-    from athena.tracking.session import ensure_experiment, mlflow_session
-    root = tmp_path_factory.mktemp("mlflow-template")
-    old = settings.data_dir
-    settings.data_dir = root
-    try:
-        with mlflow_session("") as dest:
-            ensure_experiment(dest, "athena")
-    finally:
-        settings.data_dir = old
-    return root / "mlflow" / "mlflow.db"
-
-
 @pytest.fixture(autouse=True)
-def local_store(template_store: Path) -> None:
-    local_db().parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(template_store, local_db())
+def _store(mlflow_local_store: None) -> None:
+    """Every test here gets a fresh copy of a ready-made local MLflow store (see conftest)."""
 
 
 def _client():

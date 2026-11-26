@@ -173,25 +173,3 @@ class CustomCodeHandler:
         return HandlerResult(outputs=[result], preview=preview_dataframe(result))
 
 
-@node(
-    "automl", label="AutoML Search", category="advanced",
-    description="Auto-select best model and hyperparams",
-    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val")],
-    outputs=[Port("model", "model"), Port("report", "report")],
-    fields={
-        "time_budget": ui("Time Budget (s)", widget="number"),
-        "metric": ui("Optimize", widget="select", options=["accuracy", "f1", "roc_auc", "rmse", "r2"]),
-        "n_trials": ui("Trials", widget="number"),
-    },
-    export_note="Not implemented yet.",
-    available=False, unavailable_reason="Not implemented yet: AutoML via FLAML/Optuna is roadmap phase 1.",
-)
-class AutomlHandler:
-    class Config(BaseModel):
-        time_budget: int = 60
-        metric: str = 'accuracy'
-        n_trials: int = 50
-
-    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-        raise NotImplementedError("Not implemented yet: AutoML via FLAML/Optuna is roadmap phase 1.")
-

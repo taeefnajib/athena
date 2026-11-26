@@ -35,7 +35,8 @@ def pip_requirements(model: Any) -> list[str]:
 
     pkgs = ["scikit-learn", "cloudpickle", "numpy", "pandas"]
     module = type(model).__module__.split(".")[0]
-    pkgs += {"xgboost": ["xgboost"], "lightgbm": ["lightgbm"], "catboost": ["catboost"], "imblearn": ["imbalanced-learn"]}.get(module, [])
+    pkgs += {"xgboost": ["xgboost"], "lightgbm": ["lightgbm"], "catboost": ["catboost"], "imblearn": ["imbalanced-learn"],
+             "flaml": ["flaml", "lightgbm", "xgboost"]}.get(module, [])
     out = []
     for p in pkgs:
         try:
