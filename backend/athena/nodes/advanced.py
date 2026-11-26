@@ -52,9 +52,9 @@ def _parse_values(spec: str) -> list:
     description="Emit a hyperparameter search config to connect to any model node",
     outputs=[Port("hp_config", "hpconfig")],
     fields={
-        "method": ui(),
+        "method": ui(help="Optuna samples smartly (TPE): a value list of more than three numbers, such as 10-200, is searched as a range. Needs the optuna extra."),
         "scoring": ui("Scoring Metric", widget="select", options=["accuracy", "f1_weighted", "f1_macro", "roc_auc", "r2", "neg_root_mean_squared_error", "neg_mean_absolute_error"]),
-        "n_iter": ui("Iterations (Random/Bayesian only)", min=1),
+        "n_iter": ui("Iterations / trials (not Grid)", min=1),
         "cv": ui("CV Folds", min=2),
         "n_jobs": ui("Parallel Jobs (-1 = all cores)", min=-1),
         "params": ui("Parameter Grid", widget="hp_params"),
@@ -63,7 +63,7 @@ def _parse_values(spec: str) -> list:
 )
 class HpTuneHandler:
     class Config(BaseModel):
-        method: Literal["Grid", "Random", "Bayesian"] = "Random"
+        method: Literal["Grid", "Random", "Bayesian", "Optuna"] = "Random"
         scoring: str = "accuracy"
         n_iter: int = 25
         cv: int = 5

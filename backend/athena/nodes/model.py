@@ -43,6 +43,8 @@ def _tune_model(
 
     ctx.logger.info("Starting HP search", method=method, scoring=scoring, cv=cv, params=list(param_grid.keys()))
 
+    if method == "Optuna":
+        return _optuna_search(X_train, y_train, model_obj, param_grid, scoring, n_iter, cv, n_jobs, ctx)
     if method == "Grid":
         search: Any = GridSearchCV(model_obj, param_grid, cv=cv, n_jobs=n_jobs, scoring=scoring)
     elif method == "Bayesian":
@@ -70,6 +72,63 @@ def _tune_model(
     return best, ModelPreview(
         summary=f"Best CV score: {search.best_score_:.4f}\nBest params: {search.best_params_}\n\n{repr(best)}"
     )
+
+
+OPTUNA_HINT = "Optuna isn't installed. Run: pip install 'athena-backend[optuna]' (in backend/: uv sync --extra optuna)"
+
+
+def _optuna_space(values: list[Any]) -> tuple[str, Any]:
+    """More than three numbers = a range to search continuously; otherwise a set of choices."""
+    numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
+    if numeric and len(values) > 3:
+        lo, hi = min(values), max(values)
+        if all(isinstance(v, int) for v in values):
+            return "int", (int(lo), int(hi))
+        return "float", (float(lo), float(hi), lo > 0 and hi / lo >= 100)  # log scale for wide positive ranges
+    return "categorical", list(values)
+
+
+def _optuna_search(
+    X_train: pd.DataFrame, y_train: pd.Series, model_obj: object, param_grid: dict[str, list[Any]],
+    scoring: str, n_trials: int, cv: int, n_jobs: int, ctx: ExecutionContext,
+) -> tuple[object, ModelPreview]:
+    import importlib.util
+    if importlib.util.find_spec("optuna") is None:
+        raise RuntimeError(OPTUNA_HINT)
+    import optuna
+    from sklearn.base import clone
+    from sklearn.model_selection import cross_val_score
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    space = {k: _optuna_space(v) for k, v in param_grid.items()}
+    ctx.logger.info("Optuna search space", **{k: f"{kind} {spec}" for k, (kind, spec) in space.items()})
+
+    def objective(trial: Any) -> float:
+        params: dict[str, Any] = {}
+        for name, (kind, spec) in space.items():
+            if kind == "int":
+                params[name] = trial.suggest_int(name, *spec)
+            elif kind == "float":
+                params[name] = trial.suggest_float(name, spec[0], spec[1], log=spec[2])
+            else:
+                params[name] = trial.suggest_categorical(name, spec)
+        model = clone(model_obj).set_params(**params)  # type: ignore[attr-defined]
+        return float(cross_val_score(model, X_train, y_train, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+
+    def report(study: Any, trial: Any) -> None:
+        if trial.value is not None:
+            ctx.logger.info(f"Trial {trial.number + 1}/{n_trials}: {scoring}={trial.value:.4f} (best {study.best_value:.4f})")
+        if ctx.cancelled():
+            study.stop()
+
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(objective, n_trials=n_trials, callbacks=[report])
+    best = clone(model_obj).set_params(**study.best_params)  # type: ignore[attr-defined]
+    best.fit(X_train, y_train)  # type: ignore[attr-defined]
+    ctx.logger.info("Optuna search done", best_score=round(study.best_value, 4), params=study.best_params)
+    summary = (f"Optuna ({len(study.trials)} trials) best CV {scoring}: {study.best_value:.4f}\n"
+               f"Best params: {study.best_params}\n\n{best!r}")
+    return best, ModelPreview(summary=summary)
 
 
 def _fit_or_tune(

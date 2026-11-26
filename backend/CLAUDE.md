@@ -300,6 +300,13 @@ Rules:
 - **API:** `GET /api/tracking/status`, `POST /api/tracking/local/init` (the one-time ~20 s store creation), `GET /api/tracking/experiments`, `GET /api/tracking/runs`.
 - Tests use the `mlflow_local_store` fixture (conftest): one template store per session, copied per test; creating a store costs ~20 s.
 
+### Data, storage and boosting
+
+- `nodes/files.py`: Parquet Loader, SQL Transform (DuckDB, a private in-memory connection per run; inputs registered as `in1`/`in2`), Cloud File Loader. `connectors/storage.py`: the `storage` connector (fsspec; drivers are extras `s3`, `gcs`, `azure`). `read_frame` is the one place that turns a path + format into a DataFrame.
+- Base dependencies include `pyarrow`, `duckdb`, `fsspec` and `lightgbm` (all lean). CatBoost and Optuna are extras.
+- `nodes/boosting.py`: LightGBM and CatBoost nodes share `_fit`: early stopping on X_val/y_val when connected, otherwise the common fit/tune path. Optuna lives in `nodes/model.py` (`_optuna_search`) as a method of the HP Tuning Config node.
+- Export functions that need connection details read only non-secret settings (`store.get_connection`); credentials always come from environment variables in exported code.
+
 ### AutoML
 
 `nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.

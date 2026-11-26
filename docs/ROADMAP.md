@@ -44,8 +44,8 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 ## Phase 1: ML development platform
 
 - ✅ **MLflow** (2026-11-27): tracked pipelines log params, metrics, models, the pipeline file and its exported script to a local store (`~/.athena/mlflow`) or the user's MLflow server; *Register Model* and *Load Registered Model* nodes; a Runs view with side-by-side comparison. Later: model cards, dataset logging, MLflow UI deep links for the local store.
-- **Data:** DuckDB as the local engine; Parquet, Arrow and Excel loaders; object storage (S3, MinIO, GCS, Azure Blob through `fsspec`); SQL via the 0.6 connector; dlt for API and SaaS ingestion; schema discovery and column profiling.
-- **Models:** ✅ AutoML Search (FLAML, 2026-11-27) replaced the `automl` stub: leaderboard preview, progress logs, tracked leaderboard, exportable. Still to do: LightGBM, CatBoost and statsmodels as their own nodes; Optuna-based hyperparameter search for the HP Tuning node; probability calibration and threshold tuning; PR-AUC.
+- **Data:** ✅ (2026-11-27) DuckDB as the local engine (SQL Transform node), Parquet Loader, Object Storage connector + Cloud File Loader (S3/MinIO/R2, GCS, Azure, local through `fsspec`), SQL via the 0.6 connector. Still to do: dlt for API and SaaS ingestion (replacing the `api_fetch` stub); schema discovery and column profiling; Arrow end to end.
+- **Models:** ✅ AutoML Search (FLAML, 2026-11-27) replaced the `automl` stub: leaderboard preview, progress logs, tracked leaderboard, exportable. ✅ LightGBM and CatBoost nodes (classifier + regressor, early stopping, exportable) and Optuna as an HP Tuning method (2026-11-27). Still to do: statsmodels; probability calibration and threshold tuning; PR-AUC.
 - **Tasks:** forecasting (time-series split, backtesting, MAPE/sMAPE/MASE), clustering (silhouette, Davies–Bouldin).
 - **Editor:** a Monaco code view per node; reusable subflows; auto-layout; workflow diff between versions.
 - **Reproducibility:** dataset snapshots (content-hashed Parquet) and a cache that is reused across runs.

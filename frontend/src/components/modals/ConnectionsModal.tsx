@@ -82,7 +82,7 @@ export function ConnectionsModal() {
             {connections.map(c => (
               <div key={c.name} onClick={() => edit(c)} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', border: '1px solid', borderColor: draft?.saved?.name === c.name ? 'var(--accent)' : 'var(--border)', background: draft?.saved?.name === c.name ? 'var(--card)' : 'transparent' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{c.label}{String(c.config.dialect ?? '') && ` · ${String(c.config.dialect)}`}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{c.label}{String(c.config.dialect ?? c.config.protocol ?? '') && ` · ${String(c.config.dialect ?? c.config.protocol)}`}</div>
               </div>
             ))}
             <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--border)' }}>

@@ -142,6 +142,17 @@ Click **Connections** in the top bar to save a database connection (PostgreSQL, 
 - Pipelines refer to connections by name, so you can share a pipeline without sharing credentials.
 - SQLite works out of the box. Other databases need their driver: `uv pip install -e ".[postgres]"` (or `mysql`, `duckdb`, `mssql`) in `backend/`.
 
+### Files, SQL and cloud storage
+
+- **Parquet Loader** reads a Parquet file or a folder of Parquet files (a partitioned dataset); pick columns to read only what you need.
+- **SQL Transform** runs SQL on your data with DuckDB: connected inputs are tables `in1` and `in2`, and you can query files directly (`SELECT * FROM 'data/*.parquet'`). Filter, join, aggregate, window functions.
+- **Cloud File Loader** reads CSV, Parquet, JSON Lines or Excel from Amazon S3 (and S3-compatible stores such as MinIO and Cloudflare R2), Google Cloud Storage, Azure Blob / Data Lake, or a local folder. Save the bucket under **Connections → Object Storage** (with **Test connection** and a file browser); paths can be folders or globs like `sales/2026/*.parquet`. Install the driver you need: `uv sync --extra s3` (or `gcs`, `azure`). Exported code reads the same URL with pandas and takes credentials from the environment.
+
+### More models and smarter tuning
+
+- **LightGBM** and **LightGBM Regressor** (included) and **CatBoost** / **CatBoost Regressor** (`uv sync --extra catboost`; handles text columns without one-hot encoding). Connect `X_val`/`y_val` and set *Early stopping rounds* to stop adding trees when validation stops improving.
+- **HP Tuning Config → Optuna** (`uv sync --extra optuna`): smarter search than grid or random. A value list of more than three numbers (`10-200`) is searched as a range; each trial is cross-validated and shown in the Logs tab.
+
 ### Experiment tracking and model registry (MLflow)
 
 Install the extra once: `cd backend && uv sync --extra mlflow`. Then click **Tracking off** in the top bar to turn tracking on for the pipeline.
