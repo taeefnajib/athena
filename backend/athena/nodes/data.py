@@ -283,28 +283,54 @@ class ManualInputHandler:
         )
 
 
+def _sql_env_var(connection: str) -> str:
+    return "ATHENA_" + "".join(c if c.isalnum() else "_" for c in connection).upper() + "_URL"
+
+
+def _code_sql_query(v: dict) -> str:
+    env = _sql_env_var(v["connection"] or "database")
+    limit = f"\ndf_{v['var']} = df_{v['var']}.head({int(v['limit'])})" if v["limit"] else ""
+    return (
+        f"# --- Node {v['id']}: SQL Query (connection {v['connection']!r}) ---\n"
+        "import os\n"
+        "import pandas as pd\n"
+        "from sqlalchemy import create_engine, text\n"
+        f"# Set {env} to the database's SQLAlchemy URL. Athena never writes credentials into exported code.\n"
+        f"engine_{v['var']} = create_engine(os.environ[{env!r}])\n"
+        f"with engine_{v['var']}.connect() as _conn:\n"
+        f"    df_{v['var']} = pd.read_sql_query(text({v['query']!r}), _conn){limit}\n"
+    )
+
+
 @node(
-    "db_connector", label="DB Connector", category="data",
-    description="Connect to MySQL / PostgreSQL",
+    "db_connector", label="SQL Query", category="data",
+    description="Run a SQL query against a saved database connection",
     outputs=[Port("dataset", "dataset")],
     fields={
-        "host": ui(widget="text"),
-        "port": ui(widget="number"),
-        "db": ui("Database", widget="text"),
-        "query": ui("SQL Query", widget="textarea"),
+        "connection": ui("Connection", widget="connection", connector="sql"),
+        "query": ui("SQL Query", widget="textarea", mono=True),
+        "limit": ui("Row limit", help="0 = no limit"),
     },
-    export_note="Not implemented yet.",
-    available=False, unavailable_reason="Not implemented yet: replaced by the SQL connector (roadmap 0.6).",
+    code=_code_sql_query,
 )
 class DbConnectorHandler:
     class Config(BaseModel):
-        host: str = 'localhost'
-        port: int = 5432
-        db: str = 'mydb'
-        query: str = 'SELECT * FROM table LIMIT 1000'
+        connection: str = ""
+        query: str = "SELECT * FROM my_table"
+        limit: int = 0
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-        raise NotImplementedError("Not implemented yet: replaced by the SQL connector (roadmap 0.6).")
+        from athena.connectors.store import resolve_connection
+        cfg = self.Config(**ctx.config)
+        if not cfg.connection:
+            raise ValueError("Choose a connection (create one under Connections in the top bar)")
+        if not cfg.query.strip():
+            raise ValueError("Enter a SQL query")
+        impl, conn_cfg = resolve_connection(cfg.connection)
+        ctx.logger.info("Running query", connection=cfg.connection, limit=cfg.limit or "none")
+        df = impl.read(conn_cfg, cfg.query, limit=cfg.limit or None)
+        ctx.logger.info("Query returned", rows=len(df), cols=len(df.columns))
+        return HandlerResult(outputs=[df], preview=preview_dataframe(df), metrics={"rows": float(len(df))})
 
 @node(
     "api_fetch", label="API Fetch", category="data",

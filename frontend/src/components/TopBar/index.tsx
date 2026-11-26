@@ -52,7 +52,7 @@ const STATUS_CONFIG = {
 export function TopBar({ onRun, onStop }: TopBarProps) {
   const { nodes, edges, undo, redo, historyIndex, history } = usePipelineStore()
   const status = useExecutionStore(s => s.status)
-  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal } = useUiStore()
+  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal } = useUiStore()
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle
 
   const canUndo = historyIndex > 0
@@ -96,6 +96,10 @@ export function TopBar({ onRun, onStop }: TopBarProps) {
       <Btn onClick={() => setShowLoadModal(true)}>Load</Btn>
       <Btn onClick={() => setShowTemplatesModal(true)}>Templates</Btn>
       <Btn onClick={() => setShowExportModal(true)}>Export Code</Btn>
+
+      <Divider />
+
+      <Btn onClick={() => setShowConnectionsModal(true)} title="Databases and other external systems">Connections</Btn>
 
       <div style={{ flex: 1 }} />
 

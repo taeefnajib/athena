@@ -10,10 +10,13 @@ from athena.api.runs import router as runs_router
 from athena.api.nodes import router as nodes_router
 from athena.api.ws import router as ws_router
 from athena.api.files import router as files_router
+from athena.api.connections import router as connections_router
 from athena.core.executor import pool, reset_active_run
 
-# Import all nodes to trigger registration
-import athena.nodes  # noqa: F401
+# Register built-in nodes/connectors and installed plugins
+from athena.plugins import load_plugins
+
+load_plugins()
 
 
 @asynccontextmanager
@@ -53,6 +56,7 @@ app.include_router(runs_router)
 app.include_router(nodes_router)
 app.include_router(ws_router)
 app.include_router(files_router)
+app.include_router(connections_router)
 
 
 @app.get("/")

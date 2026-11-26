@@ -2,8 +2,10 @@ import json
 from athena.schemas.pipeline import PipelineSpec
 from athena.core.dag import topo_sort
 from athena.core.registry import NODE_META
-from athena.sdk import config_defaults
-import athena.nodes  # noqa: F401  (registers the built-in nodes)
+from athena.plugins import load_plugins
+from athena.sdk import config_defaults, render_code
+
+load_plugins()
 
 
 
@@ -45,11 +47,11 @@ def pipeline_to_python(spec: PipelineSpec) -> str:
             # pandas rejects header=True/False; mirror the runtime handler (0 or None).
             fmt_cfg["header"] = 0 if fmt_cfg.get("header", True) else None
         try:
-            lines.append(meta.code.format(
-                id=node_id, var=var, src=src,
-                src_model=src_model, src_test=src_test,
+            lines.append(render_code(meta, {
+                "id": node_id, "var": var, "src": src,
+                "src_model": src_model, "src_test": src_test,
                 **fmt_cfg,
-            ))
+            }))
         except (KeyError, IndexError) as exc:
             lines.append(f"# --- Node {node_id}: {meta.label} ---\n# Export failed: missing template value {exc}\n")
 

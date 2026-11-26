@@ -2,10 +2,11 @@ from typing import Any
 
 from fastapi import APIRouter
 
-import athena.nodes  # noqa: F401  (registers the built-in nodes)
+from athena.plugins import load_plugins
 from athena.core.registry import CATEGORIES, NODE_META
 from athena.sdk import node_spec
 
+load_plugins()
 router = APIRouter(prefix="/api/nodes")
 
 

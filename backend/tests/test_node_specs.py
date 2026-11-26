@@ -5,7 +5,7 @@ import pytest
 
 import athena.nodes  # noqa: F401
 from athena.core.registry import CATEGORIES, NODE_META, NODE_REGISTRY
-from athena.sdk import config_defaults, node_spec
+from athena.sdk import config_defaults, node_spec, render_code
 
 ALL = sorted(NODE_META)
 
@@ -49,7 +49,7 @@ def test_export_template_fills_from_defaults(node_type: str):
     """A node saved with an empty config must still export (no 'template error')."""
     meta = NODE_META[node_type]
     assert meta.code is not None
-    out = meta.code.format(id="n1", var="n1", src="n0", src_model="n0", src_test="n0", **config_defaults(meta))
+    out = render_code(meta, {"id": "n1", "var": "n1", "src": "n0", "src_model": "n0", "src_test": "n0", **config_defaults(meta)})
     assert "n1" in out
 
 

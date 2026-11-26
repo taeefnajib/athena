@@ -11,6 +11,13 @@
             factor: float = 1.0
         def __call__(self, ctx: ExecutionContext) -> HandlerResult: ...
 """
-from athena.sdk.node import FieldUI, NodeMeta, Port, config_defaults, config_fields, node, node_spec, ui
+from athena.sdk.node import (FieldUI, NodeMeta, Port, config_defaults, config_fields, form_fields, node,
+                             node_spec, render_code, ui)
 
-__all__ = ["FieldUI", "NodeMeta", "Port", "config_defaults", "config_fields", "node", "node_spec", "ui"]
+__all__ = ["FieldUI", "NodeMeta", "Port", "config_defaults", "config_fields", "form_fields", "node",
+           "node_spec", "render_code", "ui"]
+
+from athena.sdk.connector import (ConnectorBase, ConnectorMeta, Resource, TestResult,  # noqa: E402
+                                  connector, connector_spec)
+
+__all__ += ["ConnectorBase", "ConnectorMeta", "Resource", "TestResult", "connector", "connector_spec"]

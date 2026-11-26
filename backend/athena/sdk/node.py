@@ -11,9 +11,9 @@ import typing
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
-Widget = Literal["text", "number", "select", "toggle", "textarea", "file", "hp_params", "col_map"]
+Widget = Literal["text", "number", "select", "toggle", "textarea", "file", "hp_params", "col_map", "password", "connection"]
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,9 @@ class FieldUI:
     min: float | None = None
     max: float | None = None
     step: float | None = None
+    connector: str | None = None
+    """For widget="connection": which connector type's saved connections to offer."""
+    help: str | None = None
 
 
 def ui(
@@ -49,9 +52,12 @@ def ui(
     min: float | None = None,
     max: float | None = None,
     step: float | None = None,
+    connector: str | None = None,
+    help: str | None = None,
 ) -> FieldUI:
-    """Shorthand for :class:`FieldUI`: ``ui("Estimators")``, ``ui("Code", widget="textarea", mono=True)``."""
-    return FieldUI(label, widget, tuple(options) if options is not None else None, accept, mono, min, max, step)
+    """Shorthand for :class:`FieldUI`: ``ui("Estimators")``, ``ui("Code", widget="textarea", mono=True)``,
+    ``ui("Connection", widget="connection", connector="sql")``."""
+    return FieldUI(label, widget, tuple(options) if options is not None else None, accept, mono, min, max, step, connector, help)
 
 
 @dataclass(frozen=True)
@@ -64,8 +70,9 @@ class NodeMeta:
     outputs: tuple[Port, ...]
     config: type[BaseModel] | None
     fields: dict[str, FieldUI] = field(default_factory=dict)
-    code: str | None = None
-    """Export template (str.format placeholders: id, var, src, src_model, src_test and config fields)."""
+    code: str | Callable[[dict[str, Any]], str] | None = None
+    """Export template: a str.format template, or a function of the same values returning code.
+    Values: id, var, src, src_model, src_test, plus every config field (defaults filled in)."""
     export_note: str | None = None
     """Why the node has no export template. Exactly one of ``code`` / ``export_note`` is set."""
     available: bool = True
@@ -89,7 +96,7 @@ def node(
     inputs: list[Port] | tuple[Port, ...] = (),
     outputs: list[Port] | tuple[Port, ...] = (),
     fields: dict[str, FieldUI] | None = None,
-    code: str | None = None,
+    code: str | Callable[[dict[str, Any]], str] | None = None,
     export_note: str | None = None,
     available: bool = True,
     unavailable_reason: str | None = None,
@@ -142,6 +149,8 @@ def _strip_optional(annotation: Any) -> Any:
 
 def _infer_widget(annotation: Any) -> Widget:
     ann = _strip_optional(annotation)
+    if ann is SecretStr:
+        return "password"
     if _literal_options(ann):
         return "select"
     if ann is bool:
@@ -155,20 +164,23 @@ def _default_label(name: str) -> str:
     return name.replace("_", " ").strip().capitalize()
 
 
-def config_fields(meta: NodeMeta) -> list[dict[str, Any]]:
-    """The inspector form for a node, in the shape frontend `ConfigField` expects.
+def form_fields(config: type[BaseModel] | None, hints: dict[str, FieldUI]) -> list[dict[str, Any]]:
+    """An inspector form, in the shape frontend `ConfigField` expects (used for nodes and connectors).
 
-    Field order follows ``fields`` (the declared UI order) and then any remaining ``Config`` fields.
+    Field order follows ``hints`` (the declared UI order) and then any remaining ``Config`` fields.
+    Secret fields (``SecretStr``) never expose their default value.
     """
-    cfg = meta.config or _EmptyConfig
+    cfg = config or _EmptyConfig
     model_fields = cfg.model_fields
-    order = [k for k in meta.fields if k in model_fields] + [k for k in model_fields if k not in meta.fields]
+    order = [k for k in hints if k in model_fields] + [k for k in model_fields if k not in hints]
     out: list[dict[str, Any]] = []
     for name in order:
         f = model_fields[name]
-        hint = meta.fields.get(name, FieldUI())
+        hint = hints.get(name, FieldUI())
         widget = hint.widget or _infer_widget(f.annotation)
         default = f.get_default(call_default_factory=True)
+        if isinstance(default, SecretStr):
+            default = ""
         entry: dict[str, Any] = {
             "id": name,
             "label": hint.label or f.title or _default_label(name),
@@ -182,12 +194,20 @@ def config_fields(meta: NodeMeta) -> list[dict[str, Any]]:
             entry["accept"] = hint.accept
         if hint.mono:
             entry["mono"] = True
+        if hint.connector:
+            entry["connector"] = hint.connector
+        if hint.help or f.description:
+            entry["help"] = hint.help or f.description
         for k in ("min", "max", "step"):
             v = getattr(hint, k)
             if v is not None:
                 entry[k] = v
         out.append(entry)
     return out
+
+
+def config_fields(meta: NodeMeta) -> list[dict[str, Any]]:
+    return form_fields(meta.config, meta.fields)
 
 
 def node_spec(meta: NodeMeta) -> dict[str, Any]:
@@ -206,6 +226,13 @@ def node_spec(meta: NodeMeta) -> dict[str, Any]:
         "unavailable_reason": meta.unavailable_reason,
         "runtime": meta.runtime,
     }
+
+
+def render_code(meta: NodeMeta, values: dict[str, Any]) -> str:
+    """Fill a node's export template (raises KeyError/IndexError if a value is missing)."""
+    if meta.code is None:
+        raise ValueError(f"{meta.type} has no export template: {meta.export_note}")
+    return meta.code(values) if callable(meta.code) else meta.code.format(**values)
 
 
 def config_defaults(meta: NodeMeta) -> dict[str, Any]:

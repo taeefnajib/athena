@@ -2,15 +2,21 @@
 // This module only holds the types, the loaded registry, and presentation-only category styling.
 // Never hand-add node entries here; define nodes with @node in the backend (see root CLAUDE.md §4.2).
 
-export type ConfigField =
-  | { id: string; label: string; type: 'text'; default: string }
-  | { id: string; label: string; type: 'number'; default: number; min?: number; max?: number; step?: number }
-  | { id: string; label: string; type: 'select'; default: string; options: string[] }
-  | { id: string; label: string; type: 'toggle'; default: boolean }
-  | { id: string; label: string; type: 'textarea'; default: string; mono?: boolean }
-  | { id: string; label: string; type: 'file'; default: string; accept?: string }
-  | { id: string; label: string; type: 'hp_params'; default: Array<{ key: string; values: string }> }
-  | { id: string; label: string; type: 'col_map'; default: Array<{ key: string; values: string }> }
+interface FieldBase { id: string; label: string; help?: string }
+
+export type ConfigField = FieldBase & (
+  | { type: 'text'; default: string }
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number }
+  | { type: 'select'; default: string; options: string[] }
+  | { type: 'toggle'; default: boolean }
+  | { type: 'textarea'; default: string; mono?: boolean }
+  | { type: 'file'; default: string; accept?: string }
+  | { type: 'hp_params'; default: Array<{ key: string; values: string }> }
+  | { type: 'col_map'; default: Array<{ key: string; values: string }> }
+  | { type: 'password'; default: string }
+  /** A saved connection's name; `connector` limits the choices to one connector type. */
+  | { type: 'connection'; default: string; connector?: string }
+)
 
 /** Port types are open strings: plugins can introduce new ones. Built-ins include dataset, X_train, model, … */
 export type PortType = string
