@@ -154,6 +154,9 @@ class CustomCodeHandler:
         code: str = "# df is your DataFrame\ndf['new_col'] = df['col1'] * 2\nreturn df"
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        from athena.config import settings
+        if not settings.allow_custom_code:
+            raise ValueError("Custom code is disabled (ATHENA_ALLOW_CUSTOM_CODE=false).")
         cfg = self.Config(**ctx.config)
         df: pd.DataFrame = ctx.inputs[0].copy()
         lines = ["def _user_fn(df, pd, np):"] + [f"    {ln}" for ln in cfg.code.splitlines()]

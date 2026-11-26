@@ -29,14 +29,14 @@ This file is the plan of record. Each phase ships something usable on its own. T
 
 Goal: make adding a node, connector or runtime a one-place change, and stop running user code in the API process.
 
-**Status (2026-11-27):** 0.1 done. 0.2: the export declaration is enforced, but only 9 nodes have templates so far. 0.7: tests, toast and `max_features` are fixed and stubs are hidden; PR #1 is still open. 0.3–0.6 not started.
+**Status (2026-11-27):** 0.1 and 0.4 done. 0.2: the export declaration is enforced, but only 9 nodes have templates so far. 0.7: tests, toast and `max_features` are fixed and stubs are hidden; PR #1 is still open. 0.3, 0.5 and 0.6 not started.
 
 | # | Deliverable | Done when |
 |---|---|---|
 | 0.1 | ✅ **Node SDK.** One Python definition per node: type, label, category, description, typed ports, a Pydantic config with UI hints, a handler, and an optional export template. `GET /api/nodes` serves the full spec. The frontend builds its library and inspector forms from it, and `nodeRegistry.ts` stops being a second registry. | A new node needs only a Python file. A test fails if any node's config, ports or UI metadata disagree. |
 | 0.2 | **Export lives on the node.** Each node either supplies its own code template or explicitly declares `exportable=False` with a reason; export inserts that reason as a comment. | A test enforces the declaration for every node. |
 | 0.3 | **Workflow spec v2.** Adds `name`, `metadata`, and per-node `runtime`, `resources`, `retry` and `cache` policy. v1 files load and upgrade automatically. | v1 round-trips; v2 fields are validated. |
-| 0.4 | **Isolated runtime.** Each run executes in a worker process. The API server only schedules work and streams events. Cancellation and per-node timeouts are enforced by the worker; a hung run can be killed. `custom_code` runs only in the worker. | A crashing or looping node can't take the API down. |
+| 0.4 | ✅ **Isolated runtime.** Each run executes in a worker process. The API server only schedules work and streams events. Cancellation and per-node timeouts are enforced by the worker; a hung run can be killed. `custom_code` runs only in the worker. | A crashing or looping node can't take the API down. |
 | 0.5 | **Plugin loading.** Nodes and connectors register through Python entry points (`athena.nodes`, `athena.connectors`). The built-in nodes use the same mechanism. | An external package adds a node without touching core. |
 | 0.6 | **Connector SDK.** A connector declares a config schema, which fields are secrets, `test()`, `list()` and `read()`/`write()`. Secrets are stored in the OS keychain (`keyring`) and referenced as `secret://<name>`; they never appear in `.athena` files or exports. UI: a Connections panel with a "Test connection" button. | The SQL connector (SQLAlchemy: Postgres, MySQL, SQLite, DuckDB) replaces the `db_connector` stub. |
 | 0.7 | **Debt.** Fix the stale tests, the toast bug and the invalid `max_features='auto'` option; hide stub nodes until they are implemented; merge PR #1. | Both test suites green. |

@@ -167,7 +167,12 @@ class ImputerHandler:
 
 ## 5. Executor
 
-`core/executor.py`. Async, single-pipeline-at-a-time, in-process.
+Two parts, single-pipeline-at-a-time:
+
+- **`runtime/engine.py`** walks the DAG and calls handlers. It is synchronous and runs **only inside a worker process** (`runtime/worker.py`), one fresh process per run. A warm standby worker has already imported the nodes, so runs start fast.
+- **`core/executor.py`** is the supervisor inside the API server. It hands the run to a worker, relays the worker's events (sent over a `Pipe`, so they survive the worker dying) to the broker, and enforces per-node timeouts (`ATHENA_NODE_TIMEOUT_S`), hard cancellation after a grace period, and crash reporting.
+
+The sketch below shows the engine's logic; the real code lives in `runtime/engine.py`.
 
 ```python
 async def execute(spec: PipelineSpec, run_id: str, broker: EventBroker,
@@ -217,8 +222,10 @@ async def execute(spec: PipelineSpec, run_id: str, broker: EventBroker,
 ```
 
 Key requirements:
-- **Heavy work runs in `run_in_threadpool`** so the FastAPI event loop stays responsive (WS messages keep flowing). For CPU-bound ML, use `anyio.to_thread.run_sync` or `concurrent.futures.ThreadPoolExecutor`. Don't block the loop.
-- **Cancellation** is cooperative. `POST /api/runs/{id}/cancel` flips a flag the executor checks between nodes. In-flight node finishes naturally (we don't kill threads — too dangerous with C extensions).
+- **Node code never runs in the API process.** Handlers, `custom_code` included, run in the worker. Don't import or call handlers from API routes.
+- **Cancellation** is cooperative first: the worker checks a flag between nodes, and handlers can poll `ctx.cancelled()`. If the in-flight node hasn't finished `CANCEL_GRACE_S` after Stop, the supervisor kills the worker and reports the node as cancelled.
+- **Timeouts and crashes are user-visible errors**: a node over `ATHENA_NODE_TIMEOUT_S`, or a worker that dies (segfault, `os._exit`, out of memory), becomes `node_finish: error` + `run_finish: error`, and the run slot is freed.
+- **Logs**: `ctx.logger` is a `NodeLogger`; every call becomes a `node_log` WS event.
 - **Single run at a time.** A second `POST /run` while one is active returns 409.
 - **Cache key** = SHA256 of `(node.type, canonical_json(node.config), [parent_cache_keys])`. Skip the handler if the key hits.
 - **Errors are user errors by default.** Wrap each handler call. Internal executor exceptions (KeyError, etc.) surface as 5xx and a different WS close code so the frontend can distinguish.

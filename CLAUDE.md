@@ -288,7 +288,7 @@ Do **not** introduce: Redux, MobX, plain Flask, Django, Streamlit, alternative g
 
 - Not a hosted product. There is no `athena.com`, no Athena account and no Athena cloud. Every integration runs on infrastructure and credentials the user controls.
 - Not a reimplementation of mature MLOps tools. Orchestration, experiment tracking, serving, feature stores and data warehousing are integrated (MLflow, Dagster, BentoML, Feast, Snowflake, …), not rebuilt.
-- Not a place where user code runs in the API server. Handlers and custom code execute in worker processes (roadmap 0.4), never in the request-serving process.
+- Not a place where user code runs in the API server. Handlers and custom code execute in worker processes (`backend/athena/runtime/`), never in the request-serving process.
 - Not multi-user yet. Team features (auth, RBAC, shared workspaces) belong to the server-mode phase and must not complicate the single-user local path before then.
 
 Deep learning, distributed compute and cloud connectors are on the roadmap (phases 1–3); add them as plugins in roadmap order, not ad hoc.
