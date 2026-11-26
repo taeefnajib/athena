@@ -152,7 +152,7 @@ function SettingsTab({ spec, config, nodeId, onChange }: { spec: NodeSpec; confi
               />
             )}
             {field.type === 'password' && <input style={inputBase} type="password" autoComplete="new-password" value={String(val)} onChange={e => update(e.target.value)} />}
-            {field.type === 'connection' && <ConnectionField value={String(val)} connector={field.connector} onChange={update} />}
+            {field.type === 'connection' && <ConnectionField value={String(val)} connector={field.connector} emptyLabel={field.empty_label} onChange={update} />}
             {field.help && <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5 }}>{field.help}</div>}
           </div>
         )
@@ -161,7 +161,7 @@ function SettingsTab({ spec, config, nodeId, onChange }: { spec: NodeSpec; confi
   )
 }
 
-function ConnectionField({ value, connector, onChange }: { value: string; connector?: string; onChange: (v: string) => void }) {
+function ConnectionField({ value, connector, emptyLabel, onChange }: { value: string; connector?: string; emptyLabel?: string; onChange: (v: string) => void }) {
   const { connections, loaded, load } = useConnectionStore()
   const setShowConnectionsModal = useUiStore(s => s.setShowConnectionsModal)
   useEffect(() => { if (!loaded) load().catch(() => { /* the modal reports load errors */ }) }, [loaded, load])
@@ -172,7 +172,7 @@ function ConnectionField({ value, connector, onChange }: { value: string; connec
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', gap: 6 }}>
         <select style={style} value={value} onChange={e => onChange(e.target.value)}>
-          <option value="">{choices.length ? 'Choose a connection…' : 'No connections yet'}</option>
+          <option value="">{emptyLabel ?? (choices.length ? 'Choose a connection…' : 'No connections yet')}</option>
           {choices.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
           {missing && <option value={value}>{value} (not on this machine)</option>}
         </select>

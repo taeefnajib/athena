@@ -291,6 +291,15 @@ Rules:
 - API: `GET /api/connectors`, `GET/PUT /api/connections`, `GET/DELETE /api/connections/{name}`, `POST /api/connections/test`, `GET /api/connections/{name}/resources`. Secrets are write-only: responses say only whether one is set (and show `env://` references).
 - Tests use `secrets.set_store(MemoryStore())`; never touch the real keychain in tests.
 
+### Experiment tracking and the model registry (MLflow)
+
+- `athena/tracking/` (optional extra `athena-backend[mlflow]`; MLflow is imported lazily, so Athena runs without it).
+- **Destination:** `session.mlflow_session(connection)` points MLflow at a saved `mlflow` connection or, for `""`, the local store (`<data_dir>/mlflow/mlflow.db` + `artifacts/`). MLflow state is process-global: always go through the session, which restores it.
+- **Observer:** `runtime/observers.py` is the generic hook (`on_run_start`, `on_node_finish`, `on_run_finish`, optional `abandon`). `tracking/observer.py` logs a tracked run: params `<node_id>.<field>`, metrics `<node_id>.<metric>`, `athena/pipeline.json` + `athena/pipeline.py`, and every `model` output (cloudpickle, pinned pip requirements). Observer errors become `run_info` warnings and close the MLflow run as FAILED; they never fail the pipeline. If the supervisor kills a worker, it marks the tracked run KILLED/FAILED.
+- **Nodes:** `mlflow_register` (into the tracking destination, reusing the model the run already logged; local store when untracked) and `mlflow_load` (by alias or version, from any destination).
+- **API:** `GET /api/tracking/status`, `POST /api/tracking/local/init` (the one-time ~20 s store creation), `GET /api/tracking/experiments`, `GET /api/tracking/runs`.
+- Tests create one template store per session and copy it per test (`tests/test_tracking.py`); creating a store costs ~20 s.
+
 ---
 
 ## 8. Code generation

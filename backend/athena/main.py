@@ -11,6 +11,7 @@ from athena.api.nodes import router as nodes_router
 from athena.api.ws import router as ws_router
 from athena.api.files import router as files_router
 from athena.api.connections import router as connections_router
+from athena.api.tracking import router as tracking_router
 from athena.core.executor import pool, reset_active_run
 
 # Register built-in nodes/connectors and installed plugins
@@ -57,6 +58,7 @@ app.include_router(nodes_router)
 app.include_router(ws_router)
 app.include_router(files_router)
 app.include_router(connections_router)
+app.include_router(tracking_router)
 
 
 @app.get("/")

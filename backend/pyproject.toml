@@ -30,6 +30,7 @@ postgres = ["psycopg[binary]>=3.2.0"]
 mysql = ["pymysql>=1.1.0"]
 duckdb = ["duckdb>=1.1.0", "duckdb-engine>=0.13.0"]
 mssql = ["pyodbc>=5.1.0"]
+mlflow = ["mlflow>=3.0"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
@@ -39,6 +40,7 @@ dev = [
 # Athena loads nodes and connectors from these entry point groups; third-party plugins use the same ones.
 [project.entry-points."athena.nodes"]
 builtin = "athena.nodes"
+tracking = "athena.tracking"
 
 [project.entry-points."athena.connectors"]
 builtin = "athena.connectors"

@@ -21,7 +21,7 @@ from typing import Any
 
 GROUPS = ("athena.nodes", "athena.connectors")
 # Imported directly too, so a stale install (entry points not yet regenerated) still works.
-BUILTIN_MODULES = ("athena.nodes", "athena.connectors")
+BUILTIN_MODULES = ("athena.nodes", "athena.connectors", "athena.tracking")
 
 
 @dataclass

@@ -17,7 +17,7 @@ import structlog
 from athena.config import settings
 from athena.core.events import EventBroker, broker as default_broker
 from athena.runtime.worker import worker_main
-from athena.schemas.events import ErrorPayload, NodeFinish, NodeLog, NodeStart, RunFinish
+from athena.schemas.events import ErrorPayload, NodeFinish, NodeLog, NodeStart, RunFinish, RunInfo
 from athena.schemas.pipeline import PipelineSpec
 
 logger = structlog.get_logger()
@@ -110,6 +110,7 @@ pool = WorkerPool()
 
 _EVENT_TYPES: dict[str, Any] = {
     "node_start": NodeStart, "node_log": NodeLog, "node_finish": NodeFinish, "run_finish": RunFinish,
+    "run_info": RunInfo,
 }
 
 
@@ -148,10 +149,23 @@ async def execute(
             pool.prewarm()
 
 
+def _terminate_tracked_run(tracking: dict[str, Any], run_status: str, log: Any) -> None:
+    try:
+        from mlflow import MlflowClient
+
+        from athena.tracking.session import mlflow_session
+        with mlflow_session(tracking.get("connection", "")) as dest:
+            MlflowClient(tracking_uri=dest.tracking_uri).set_terminated(
+                tracking["run_id"], status="KILLED" if run_status == "cancelled" else "FAILED")
+    except Exception as exc:  # best effort: never let tracking clean-up break the run lifecycle
+        log.warning("tracking_cleanup_failed", error=str(exc))
+
+
 async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: Any, timeouts: dict[str, int]) -> None:
     current: str | None = None          # node in flight
     node_started = 0.0
     cancel_asked: float | None = None
+    tracking: dict[str, Any] | None = None  # from run_info: the MLflow run to close if the worker dies
 
     async def publish(event: Any) -> None:
         await event_broker.publish(run_id, event)
@@ -162,6 +176,8 @@ async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: An
                                      duration_ms=int((time.monotonic() - node_started) * 1000),
                                      error=ErrorPayload(message=node_message)))
         await publish(RunFinish(status=run_status))  # type: ignore[arg-type]
+        if tracking is not None:  # the worker died before it could close its MLflow run
+            await anyio.to_thread.run_sync(_terminate_tracked_run, tracking, run_status, log)
 
     while True:
         msg: dict[str, Any] | None = None
@@ -181,6 +197,8 @@ async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: An
                 return
             if kind == "_done":
                 return  # run_finish was already relayed
+            if kind == "run_info" and msg.get("tracking"):
+                tracking = msg["tracking"]
             if kind == "node_start":
                 current, node_started = msg["node_id"], time.monotonic()
             elif kind == "node_finish":

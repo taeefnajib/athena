@@ -17,7 +17,7 @@ export function useAutosave() {
 
     api.getLatestAutosave().then(data => {
       if (!data?.spec) return
-      const { nodes, edges } = fromPipelineSpec(data.spec)
+      const { nodes, edges, meta } = fromPipelineSpec(data.spec)
       if (nodes.length === 0) return
 
       const current = usePipelineStore.getState()
@@ -32,7 +32,7 @@ export function useAutosave() {
         `Click OK to load, or Cancel to start fresh with the default pipeline.`
       )
       if (ok) {
-        loadPipeline(nodes, edges)
+        loadPipeline(nodes, edges, meta)
         showToast('Pipeline recovered from autosave', 'success')
       }
     }).catch(() => { /* no autosave, that's fine */ })

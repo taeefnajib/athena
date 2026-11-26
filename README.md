@@ -142,6 +142,16 @@ Click **Connections** in the top bar to save a database connection (PostgreSQL, 
 - Pipelines refer to connections by name, so you can share a pipeline without sharing credentials.
 - SQLite works out of the box. Other databases need their driver: `uv pip install -e ".[postgres]"` (or `mysql`, `duckdb`, `mssql`) in `backend/`.
 
+### Experiment tracking and model registry (MLflow)
+
+Install the extra once: `cd backend && uv sync --extra mlflow`. Then click **Tracking off** in the top bar to turn tracking on for the pipeline.
+
+- Every run is logged to MLflow: each node's settings, metrics, the trained models, the pipeline file and its exported Python script.
+- Runs go to Athena's built-in local store (`~/.athena/mlflow`, created on first use in about 20 seconds) or to your own MLflow server: add it under **Connections** as an *MLflow Tracking Server*.
+- **Runs** shows the experiment's history. Select two or more runs to compare them side by side: best values in green, settings that differ in amber.
+- The **Register Model** node registers a trained model (with an optional alias such as `champion`); **Load Registered Model** brings one back into any pipeline, by alias or version.
+- To browse the local store in MLflow's own UI: `uv run mlflow ui --backend-store-uri sqlite:///$HOME/.athena/mlflow/mlflow.db`.
+
 ### Execution settings
 
 Each node's inspector has an **Execution** section: a timeout, retries with backoff, and whether to reuse cached results. Every pipeline runs in a separate worker process, so a crashing or hung node can't take the app down, and **Stop** always works.

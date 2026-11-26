@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { NODE_REGISTRY } from '../registry/nodeRegistry'
-import { pickPolicy, type NodePolicy, type PipelineSpec, type NodeStatus } from '../types/pipeline'
+import { DEFAULT_META, pickPolicy, type NodePolicy, type PipelineMeta, type PipelineSpec, type NodeStatus } from '../types/pipeline'
 
 export interface PipelineNode {
   id: string
@@ -115,7 +115,10 @@ interface PipelineState {
   removeEdge: (id: string) => void
   setSelectedNode: (id: string | null) => void
   setSelectedEdge: (id: string | null) => void
-  loadPipeline: (nodes: PipelineNode[], edges: PipelineEdge[]) => void
+  /** Pipeline name, description and metadata (e.g. tracking settings). */
+  meta: PipelineMeta
+  setMeta: (patch: Partial<PipelineMeta>) => void
+  loadPipeline: (nodes: PipelineNode[], edges: PipelineEdge[], meta?: PipelineMeta) => void
   clear: () => void
   undo: () => void
   redo: () => void
@@ -191,13 +194,16 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   setSelectedNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
   setSelectedEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
 
-  loadPipeline: (nodes, edges) => {
+  meta: DEFAULT_META,
+  setMeta: (patch) => set(s => ({ meta: { ...s.meta, ...patch }, isDirty: true })),
+
+  loadPipeline: (nodes, edges, meta) => {
     // Advance nodeCounter past any loaded node IDs so new drops never collide.
     for (const n of nodes) {
       const m = n.id.match(/^n_(\d+)$/)
       if (m) nodeCounter = Math.max(nodeCounter, parseInt(m[1], 10))
     }
-    set(s => ({ nodes, edges, selectedNodeId: null, selectedEdgeId: null, isDirty: false, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(s, nodes, edges) }))
+    set(s => ({ nodes, edges, meta: meta ?? DEFAULT_META, selectedNodeId: null, selectedEdgeId: null, isDirty: false, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(s, nodes, edges) }))
   },
 
   clear: () => {
@@ -235,10 +241,12 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   },
 
   toPipelineSpec: () => {
-    const { nodes, edges } = get()
+    const { nodes, edges, meta } = get()
     return {
       version: 2,
-      name: 'untitled',
+      name: meta.name || 'untitled',
+      description: meta.description,
+      metadata: meta.metadata,
       nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config, ...pickPolicy(n.policy ?? {}) })),
       edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, source_port: e.sourcePort, target_port: e.targetPort })),
     }

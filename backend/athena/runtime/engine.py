@@ -15,7 +15,8 @@ import structlog
 from athena.core.cache import ArtifactCache, compute_cache_key
 from athena.core.dag import is_descendant_of, topo_sort
 from athena.core.handler import ExecutionContext, HandlerResult
-from athena.core.registry import get_handler
+from athena.core.registry import get_handler, get_meta
+from athena.runtime.observers import RunObserver, build_observers, notify
 from athena.schemas.pipeline import PipelineSpec
 
 Emit = Callable[[dict[str, Any]], None]
@@ -66,7 +67,10 @@ def run_spec(
     nodes_dicts = [{"id": n.id} for n in spec.nodes]
     edges_dicts = [{"source": e.source, "target": e.target} for e in spec.edges]
 
+    observers: list[RunObserver] = []
+
     def finish(status: str) -> str:
+        notify(observers, emit, "on_run_finish", status)  # before run_finish, so tracking is complete
         emit({"type": "run_finish", "status": status})
         return status
 
@@ -74,6 +78,8 @@ def run_spec(
         order = topo_sort(nodes_dicts, edges_dicts)
     except ValueError:
         return finish("error")
+
+    observers = notify(build_observers(spec, emit), emit, "on_run_start", spec, run_id, emit)
 
     artifacts: dict[tuple[str, int], object] = {}
     node_cache_keys: dict[str, str] = {}
@@ -141,6 +147,7 @@ def run_spec(
 
         for i, art in enumerate(result.outputs):
             artifacts[(node_id, i)] = art
+        observers = notify(observers, emit, "on_node_finish", node, get_meta(node.type), result)
         emit({"type": "node_finish", "node_id": node_id, "status": "success",
               "duration_ms": int((time.monotonic() - start) * 1000),
               "preview": result.preview.model_dump() if result.preview else None,

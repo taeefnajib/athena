@@ -34,6 +34,41 @@ export interface PipelineSpec {
   metadata?: Record<string, unknown>
 }
 
+/** spec.metadata.tracking: where (and whether) runs of this pipeline are logged. Mirrors backend TrackingSettings. */
+export interface TrackingSettings {
+  enabled: boolean
+  connection: string      // "" = Athena's local MLflow store
+  experiment: string      // "" = the pipeline's name
+  log_models: boolean
+  log_code: boolean
+}
+
+export const DEFAULT_TRACKING: TrackingSettings = { enabled: false, connection: '', experiment: '', log_models: true, log_code: true }
+
+/** Pipeline-level fields (spec v2). */
+export interface PipelineMeta {
+  name: string
+  description: string
+  metadata: Record<string, unknown>
+}
+
+export const DEFAULT_META: PipelineMeta = { name: 'untitled', description: '', metadata: {} }
+
+export function trackingOf(meta: PipelineMeta): TrackingSettings {
+  return { ...DEFAULT_TRACKING, ...((meta.metadata.tracking as Partial<TrackingSettings> | undefined) ?? {}) }
+}
+
+/** Run-level info from the backend's run_info event when the run is tracked. */
+export interface TrackingInfo {
+  backend: string
+  run_id: string
+  experiment: string
+  experiment_id: string
+  destination: string
+  connection: string
+  url: string | null
+}
+
 export const POLICY_KEYS = ['runtime', 'timeout_s', 'retry', 'cache', 'resources'] as const
 
 /** The policy fields that are actually set (so files only carry what the user chose). */

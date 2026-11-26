@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { usePipelineStore } from '../../store/pipelineStore'
 import { useExecutionStore } from '../../store/executionStore'
 import { useUiStore } from '../../store/uiStore'
+import { trackingOf } from '../../types/pipeline'
 
 interface TopBarProps {
   onRun: () => void
@@ -52,7 +53,8 @@ const STATUS_CONFIG = {
 export function TopBar({ onRun, onStop }: TopBarProps) {
   const { nodes, edges, undo, redo, historyIndex, history } = usePipelineStore()
   const status = useExecutionStore(s => s.status)
-  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal } = useUiStore()
+  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal, setShowTrackingModal, setShowRunsModal } = useUiStore()
+  const tracking = trackingOf(usePipelineStore(s => s.meta))
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle
 
   const canUndo = historyIndex > 0
@@ -100,6 +102,11 @@ export function TopBar({ onRun, onStop }: TopBarProps) {
       <Divider />
 
       <Btn onClick={() => setShowConnectionsModal(true)} title="Databases and other external systems">Connections</Btn>
+      <Btn onClick={() => setShowTrackingModal(true)} title="Log runs to MLflow">
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: tracking.enabled ? 'var(--success)' : 'var(--text-muted)' }} />
+        {tracking.enabled ? 'Tracking on' : 'Tracking off'}
+      </Btn>
+      <Btn onClick={() => setShowRunsModal(true)} title="Run history and comparison">Runs</Btn>
 
       <div style={{ flex: 1 }} />
 

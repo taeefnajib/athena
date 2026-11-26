@@ -40,6 +40,8 @@ class FieldUI:
     connector: str | None = None
     """For widget="connection": which connector type's saved connections to offer."""
     help: str | None = None
+    empty_label: str | None = None
+    """For widget="connection": what the empty choice means, e.g. "Local MLflow store"."""
 
 
 def ui(
@@ -54,10 +56,11 @@ def ui(
     step: float | None = None,
     connector: str | None = None,
     help: str | None = None,
+    empty_label: str | None = None,
 ) -> FieldUI:
     """Shorthand for :class:`FieldUI`: ``ui("Estimators")``, ``ui("Code", widget="textarea", mono=True)``,
     ``ui("Connection", widget="connection", connector="sql")``."""
-    return FieldUI(label, widget, tuple(options) if options is not None else None, accept, mono, min, max, step, connector, help)
+    return FieldUI(label, widget, tuple(options) if options is not None else None, accept, mono, min, max, step, connector, help, empty_label)
 
 
 @dataclass(frozen=True)
@@ -196,6 +199,8 @@ def form_fields(config: type[BaseModel] | None, hints: dict[str, FieldUI]) -> li
             entry["mono"] = True
         if hint.connector:
             entry["connector"] = hint.connector
+        if hint.empty_label:
+            entry["empty_label"] = hint.empty_label
         if hint.help or f.description:
             entry["help"] = hint.help or f.description
         for k in ("min", "max", "step"):

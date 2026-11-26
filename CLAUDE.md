@@ -149,6 +149,8 @@ This is what the frontend sends to `POST /api/pipelines/run` and what's saved as
 }
 ```
 
+Pipeline-level `metadata.tracking` (`{ enabled, connection, experiment, log_models, log_code }`) turns on MLflow tracking for every run; `connection: ""` is Athena's local store.
+
 `version` is 2 (spec v2). The backend accepts v1 files (a strict subset) and upgrades them; the frontend keeps the v2 node fields through load and save (`pickPolicy` in `types/pipeline.ts`). Nodes reference external systems only by **connection name** (`"connection": "warehouse"`); credentials never appear in a spec.
 
 The backend must accept this verbatim. The frontend must produce nothing else. Schema drift between sides is the #1 thing to avoid — every change to a node's `config` shape is a breaking change to both halves.
@@ -177,6 +179,7 @@ When adding a new node type:
    - `{ "type": "node_finish",  "node_id": "n1", "status": "success", "preview": {...}, "metrics": {...}, "duration_ms": 1234 }`
      - or `{ "type": "node_finish", "node_id": "n1", "status": "error", "error": { "message": "...", "traceback": "..." } }`
 4. After the last node: `{ "type": "run_finish", "status": "completed" | "error" }`.
+   - At any point, observers may send `{ "type": "run_info", "tracking": {...} | null, "message": "..." | null, "warning": "..." | null }`. When the pipeline is tracked, the first one carries the MLflow run (`run_id`, `experiment`, `experiment_id`, `destination`, `url`). Warnings mean tracking had a problem; they never fail the run.
 5. Client may call `POST /api/runs/{run_id}/cancel` at any point. Server stops scheduling new nodes; the in-flight node is allowed to finish or is interrupted at the next checkpoint.
 
 ### 4.4 Artifact previews

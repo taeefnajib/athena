@@ -8,6 +8,8 @@ interface UiState {
   showSaveModal: boolean
   showLoadModal: boolean
   showConnectionsModal: boolean
+  showTrackingModal: boolean
+  showRunsModal: boolean
   inspectorTab: 'settings' | 'preview' | 'logs' | 'metrics'
   toast: { msg: string; type: 'info' | 'success' | 'error' | 'warn' } | null
 
@@ -17,6 +19,8 @@ interface UiState {
   setShowSaveModal: (show: boolean) => void
   setShowLoadModal: (show: boolean) => void
   setShowConnectionsModal: (show: boolean) => void
+  setShowTrackingModal: (show: boolean) => void
+  setShowRunsModal: (show: boolean) => void
   setInspectorTab: (tab: UiState['inspectorTab']) => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
   clearToast: () => void
@@ -31,6 +35,8 @@ export const useUiStore = create<UiState>()(
       showSaveModal: false,
       showLoadModal: false,
       showConnectionsModal: false,
+      showTrackingModal: false,
+      showRunsModal: false,
       inspectorTab: 'settings',
       toast: null,
 
@@ -40,6 +46,8 @@ export const useUiStore = create<UiState>()(
       setShowSaveModal: (show) => set({ showSaveModal: show }),
       setShowLoadModal: (show) => set({ showLoadModal: show }),
       setShowConnectionsModal: (show) => set({ showConnectionsModal: show }),
+      setShowTrackingModal: (show) => set({ showTrackingModal: show }),
+      setShowRunsModal: (show) => set({ showRunsModal: show }),
       setInspectorTab: (tab) => set({ inspectorTab: tab }),
       showToast: (msg, type = 'info') => {
         const toast = { msg, type }

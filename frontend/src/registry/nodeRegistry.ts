@@ -15,7 +15,7 @@ export type ConfigField = FieldBase & (
   | { type: 'col_map'; default: Array<{ key: string; values: string }> }
   | { type: 'password'; default: string }
   /** A saved connection's name; `connector` limits the choices to one connector type. */
-  | { type: 'connection'; default: string; connector?: string }
+  | { type: 'connection'; default: string; connector?: string; empty_label?: string }
 )
 
 /** Port types are open strings: plugins can introduce new ones. Built-ins include dataset, X_train, model, … */

@@ -29,7 +29,7 @@ This file is the plan of record. Each phase ships something usable on its own. T
 
 Goal: make adding a node, connector or runtime a one-place change, and stop running user code in the API process.
 
-**Status (2026-11-27):** 0.1, 0.3, 0.4, 0.5 and 0.6 done. 0.2: the export declaration is enforced, but only 10 nodes have templates so far. 0.7: tests, toast and `max_features` are fixed, stubs are hidden (6 remain); PR #1 is still open. Next: MLflow (phase 1). See `docs/PLUGINS.md` for the plugin and connector SDKs.
+**Status (2026-11-27):** 0.1, 0.3, 0.4, 0.5 and 0.6 done. 0.2: the export declaration is enforced, but only 10 nodes have templates so far. 0.7: tests, toast and `max_features` are fixed, stubs are hidden (6 remain); PR #1 is still open. See `docs/PLUGINS.md` for the plugin and connector SDKs.
 
 | # | Deliverable | Done when |
 |---|---|---|
@@ -43,7 +43,7 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 
 ## Phase 1: ML development platform
 
-- **MLflow** (first plugin after Phase 0): every run logs params, metrics, artifacts and the model to a tracking URI (local `~/.athena/mlruns` by default, or the user's server). Nodes: *Register Model*, *Load Registered Model*. UI: run history and side-by-side metric comparison.
+- ✅ **MLflow** (2026-11-27): tracked pipelines log params, metrics, models, the pipeline file and its exported script to a local store (`~/.athena/mlflow`) or the user's MLflow server; *Register Model* and *Load Registered Model* nodes; a Runs view with side-by-side comparison. Later: model cards, dataset logging, MLflow UI deep links for the local store.
 - **Data:** DuckDB as the local engine; Parquet, Arrow and Excel loaders; object storage (S3, MinIO, GCS, Azure Blob through `fsspec`); SQL via the 0.6 connector; dlt for API and SaaS ingestion; schema discovery and column profiling.
 - **Models:** LightGBM, CatBoost, statsmodels; AutoML (FLAML) and hyperparameter search (Optuna) replacing the `automl` stub; probability calibration and threshold tuning; PR-AUC.
 - **Tasks:** forecasting (time-series split, backtesting, MAPE/sMAPE/MASE), clustering (silhouette, Davies–Bouldin).
