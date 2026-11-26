@@ -231,7 +231,9 @@ The "Export Code" feature must produce code that runs standalone on the user's m
 - **Pipeline JSON** — the `PipelineSpec` from §4.1, pretty-printed.
 - **Trained model** — joblib/pickle of the fitted estimator from a `model_saver` node.
 
-Code generation lives in `backend/athena/core/codegen.py`. It is a pure function: `PipelineSpec → str`. Test it by snapshotting outputs.
+Code generation lives in `backend/athena/core/codegen.py` (pure functions of the `PipelineSpec`). Every output port becomes a variable named after its type and node (`df_n1`, `model_n4`, `X_train_n3`, `report_n6`); each node's template (`backend/athena/nodes/export/`, wired with `code=EXPORT["<type>"]`) receives `in_<port>` / `out_<port>` variable names resolved through the real edges, so exports follow the actual graph. Imports are hoisted and de-duplicated; shared helpers (`_athena_target`, `_athena_tune`, the ensemble wrappers) are included only when used. The script and the notebook are built from the same per-node sections.
+
+**Templates must mirror their handlers.** `tests/test_export_equivalence.py` runs pipelines through Athena *and* executes the exported script, then compares every output (DataFrames cell by cell, metric reports value by value); it also fails if a templated node isn't covered by any pipeline. Models need a fixed `random_state` for this, which is also what makes runs reproducible.
 
 ---
 

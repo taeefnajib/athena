@@ -18,9 +18,11 @@ def _classification_spec() -> PipelineSpec:
             {"id": "e1", "source": "n1", "target": "n2", "source_port": 0, "target_port": 0},
             {"id": "e2", "source": "n2", "target": "n3", "source_port": 0, "target_port": 0},
             {"id": "e3", "source": "n3", "target": "n4", "source_port": 0, "target_port": 0},
-            {"id": "e4", "source": "n4", "target": "n5", "source_port": 0, "target_port": 0},
-            {"id": "e5", "source": "n4", "target": "n6", "source_port": 1, "target_port": 1},
-            {"id": "e6", "source": "n5", "target": "n6", "source_port": 0, "target_port": 0},
+            {"id": "e4", "source": "n4", "target": "n5", "source_port": 0, "target_port": 0},  # X_train
+            {"id": "e5", "source": "n4", "target": "n5", "source_port": 1, "target_port": 1},  # y_train
+            {"id": "e6", "source": "n5", "target": "n6", "source_port": 0, "target_port": 0},  # model
+            {"id": "e7", "source": "n4", "target": "n6", "source_port": 2, "target_port": 1},  # X_test
+            {"id": "e8", "source": "n4", "target": "n6", "source_port": 3, "target_port": 2},  # y_test
         ],
     )
 
@@ -37,8 +39,10 @@ def _regression_spec() -> PipelineSpec:
         edges=[
             {"id": "e1", "source": "r1", "target": "r2", "source_port": 0, "target_port": 0},
             {"id": "e2", "source": "r2", "target": "r3", "source_port": 0, "target_port": 0},
-            {"id": "e3", "source": "r2", "target": "r4", "source_port": 1, "target_port": 1},
+            {"id": "e3", "source": "r2", "target": "r3", "source_port": 1, "target_port": 1},
             {"id": "e4", "source": "r3", "target": "r4", "source_port": 0, "target_port": 0},
+            {"id": "e5", "source": "r2", "target": "r4", "source_port": 2, "target_port": 1},
+            {"id": "e6", "source": "r2", "target": "r4", "source_port": 3, "target_port": 2},
         ],
     )
 
@@ -65,10 +69,9 @@ def test_python_regression_contains_linear_regression():
 def test_python_nodes_in_topo_order():
     spec = _classification_spec()
     code = pipeline_to_python(spec)
-    # csv_loader must come before imputer
-    assert code.index("CSV Loader") < code.index("Imputer")
-    # train_test must come before rf
-    assert code.index("Train") < code.index("Random Forest")
+    headers = [ln for ln in code.splitlines() if ln.startswith("# --- Node ")]
+    assert [h.split(":")[0] for h in headers] == ["# --- Node n1", "# --- Node n2", "# --- Node n3", "# --- Node n4", "# --- Node n5", "# --- Node n6"]
+    assert "Not exported" not in code
 
 
 def test_json_roundtrip():
@@ -78,7 +81,7 @@ def test_json_roundtrip():
     data = json.loads(json_str)
     assert data["version"] == 2  # v1 input is upgraded to spec v2
     assert len(data["nodes"]) == 6
-    assert len(data["edges"]) == 6
+    assert len(data["edges"]) == 8
     assert data["name"] == "classification"
 
 
@@ -127,5 +130,5 @@ def test_exported_classification_script_runs(tmp_path):
     )
     namespace: dict[str, object] = {}
     exec(pipeline_to_python(spec), namespace)  # noqa: S102 - generated code under test
-    metrics = namespace["metrics_n5"]
+    metrics = namespace["report_n5"]
     assert isinstance(metrics, dict) and 0.0 <= metrics["accuracy"] <= 1.0

@@ -46,11 +46,17 @@ def test_spec_is_consistent(node_type: str):
 
 @pytest.mark.parametrize("node_type", [t for t in ALL if NODE_META[t].code])
 def test_export_template_fills_from_defaults(node_type: str):
-    """A node saved with an empty config must still export (no 'template error')."""
+    """A node saved with an empty config must still export, and the result must be valid Python."""
+    from athena.core.codegen import output_vars, safe
     meta = NODE_META[node_type]
     assert meta.code is not None
-    out = render_code(meta, {"id": "n1", "var": "n1", "src": "n0", "src_model": "n0", "src_test": "n0", **config_defaults(meta)})
-    assert "n1" in out
+    values = {**config_defaults(meta), "id": "n1", "var": "n1", "label": meta.label,
+              **{f"in_{safe(p.name)}": f"up_{safe(p.name)}" for p in meta.inputs},
+              **{f"out_{safe(p.name)}": v for p, v in zip(meta.outputs, output_vars("n1", node_type))}}
+    out = render_code(meta, values)
+    compile(out, f"<export {node_type}>", "exec")
+    for v in output_vars("n1", node_type):
+        assert v in out, f"template never assigns output {v}"
 
 
 def test_export_is_an_explicit_decision():

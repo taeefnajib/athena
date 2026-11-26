@@ -7,6 +7,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from athena.core.handler import ExecutionContext, HandlerResult
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.utils.dataframes import preview_dataframe
 
@@ -14,13 +15,6 @@ from athena.utils.dataframes import preview_dataframe
 def _cols(text: str) -> list[str] | None:
     cols = [c.strip() for c in text.split(",") if c.strip()]
     return cols or None
-
-
-def _code_parquet(v: dict[str, Any]) -> str:
-    cols = f", columns={_cols(v['columns'])!r}" if _cols(v["columns"]) else ""
-    head = f".head({int(v['limit'])})" if v["limit"] else ""
-    return (f"# --- Node {v['id']}: Parquet Loader ---\nimport pandas as pd\n"
-            f"df_{v['var']} = pd.read_parquet({v['path']!r}{cols}){head}\n")
 
 
 @node(
@@ -32,7 +26,7 @@ def _code_parquet(v: dict[str, Any]) -> str:
         "columns": ui("Columns", help="Comma-separated; empty = all. Reading fewer columns is much faster."),
         "limit": ui("Row limit", min=0, help="0 = all rows"),
     },
-    code=_code_parquet,
+    code=EXPORT["parquet_loader"],
 )
 class ParquetLoader:
     class Config(BaseModel):
@@ -58,29 +52,17 @@ class ParquetLoader:
                              metrics={"rows": float(len(df)), "cols": float(len(df.columns))})
 
 
-def _code_duckdb(v: dict[str, Any]) -> str:
-    src = v["src"]
-    second = v["src_test"]
-    lines = [f"# --- Node {v['id']}: SQL Transform (DuckDB) ---", "import duckdb"]
-    if src != "???":
-        lines.append(f"in1 = df_{src}")
-    if second != "???":
-        lines.append(f"in2 = df_{second}")
-    lines.append(f"df_{v['var']} = duckdb.sql({v['query']!r}).df()")
-    return "\n".join(lines) + "\n"
-
-
 @node(
     "duckdb_sql", label="SQL Transform", category="data",
     description="Transform data with SQL (DuckDB): filter, join, aggregate, window functions. Inputs are tables in1 and in2.",
-    inputs=[Port("in1", "dataset"), Port("in2", "dataset")],
+    inputs=[Port("in1", "dataset"), Port("in2", "dataset", optional=True)],
     outputs=[Port("dataset", "dataset")],
     fields={
         "query": ui("SQL", widget="textarea", mono=True,
                     help="Connected inputs are tables in1 and in2. You can also read files directly: "
                          "SELECT * FROM 'data/*.parquet' or read_csv('file.csv')."),
     },
-    code=_code_duckdb,
+    code=EXPORT["duckdb_sql"],
 )
 class DuckDbSql:
     class Config(BaseModel):
@@ -109,42 +91,6 @@ class DuckDbSql:
                              metrics={"rows": float(len(out)), "cols": float(len(out.columns))})
 
 
-def _code_cloud(v: dict[str, Any]) -> str:
-    """Exported code reads the same URL with pandas; credentials come from the environment, never the file."""
-    header = f"# --- Node {v['id']}: Cloud File Loader (connection {v['connection']!r}) ---\nimport pandas as pd\n"
-    try:
-        from athena.connectors.storage import StorageConfig, detect_format, url
-        from athena.connectors.store import get_connection
-        conn = get_connection(v["connection"])
-        cfg = StorageConfig(**conn["config"])
-    except Exception:
-        return header + f"# Connection {v['connection']!r} isn't saved on this machine; set the URL yourself.\ndf_{v['var']} = pd.read_parquet('s3://bucket/{v['path']}')\n"
-    target = url(cfg, v["path"])
-    kind = detect_format(target, v["format"]) or "parquet"
-    opts: dict[str, Any] = {}
-    note = {"s3": "# Credentials: the standard AWS chain (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, ~/.aws, or an instance role).",
-            "gcs": "# Credentials: GOOGLE_APPLICATION_CREDENTIALS or Application Default Credentials.",
-            "azure": "# Credentials: set AZURE_STORAGE_KEY (or use Azure default credentials).",
-            "local": ""}[cfg.protocol]
-    if cfg.protocol == "s3" and cfg.endpoint_url:
-        opts["client_kwargs"] = {"endpoint_url": cfg.endpoint_url}
-    if cfg.protocol == "azure" and cfg.azure_account_name:
-        opts["account_name"] = cfg.azure_account_name
-    if cfg.anonymous:
-        opts["anon" if cfg.protocol != "gcs" else "token"] = True if cfg.protocol != "gcs" else "anon"
-    reader = {"parquet": "read_parquet", "csv": "read_csv", "tsv": "read_csv", "json": "read_json",
-              "jsonl": "read_json", "excel": "read_excel"}[kind]
-    extra = ", sep='\t'" if kind == "tsv" else ", lines=True" if kind == "jsonl" else ""
-    so = ""
-    if cfg.protocol == "azure":
-        so = f", storage_options={{**{opts!r}, 'account_key': os.environ.get('AZURE_STORAGE_KEY')}}"
-        header += "import os\n"
-    elif opts:
-        so = f", storage_options={opts!r}"
-    head = f".head({int(v['limit'])})" if v["limit"] else ""
-    return header + (note + "\n" if note else "") + f"df_{v['var']} = pd.{reader}({target!r}{extra}{so}){head}\n"
-
-
 @node(
     "storage_loader", label="Cloud File Loader", category="data",
     description="Load a CSV, Parquet, JSON or Excel file from S3, GCS, Azure or a folder, using a saved storage connection",
@@ -155,7 +101,7 @@ def _code_cloud(v: dict[str, Any]) -> str:
         "format": ui("Format", help="auto: from the file extension (a folder is read as Parquet)"),
         "limit": ui("Row limit", min=0, help="0 = all rows"),
     },
-    code=_code_cloud,
+    code=EXPORT["storage_loader"],
 )
 class CloudFileLoader:
     class Config(BaseModel):

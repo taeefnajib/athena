@@ -13,7 +13,7 @@ register_category("community", "Community")
     description="Multiply a numeric column by two (plugin test fixture)",
     inputs=[Port("dataset", "dataset")], outputs=[Port("dataset", "dataset")],
     fields={"col": ui("Column")},
-    code="# --- Node {id}: Double Column ---\ndf_{var} = df_{src}.assign(**{{{col!r}: df_{src}[{col!r}] * 2}})\n",
+    code="{out_dataset} = {in_dataset}.assign(**{{{col!r}: {in_dataset}[{col!r}] * 2}})\n",
 )
 class DoubleColumn:
     class Config(BaseModel):

@@ -4,17 +4,11 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification, make_regression
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import TextPreview
-
-
-_CODE_CSV_LOADER = """\
-# --- Node {id}: CSV Loader ---
-import pandas as pd
-df_{var} = pd.read_csv({path!r}, sep={sep!r}, header={header}, encoding={encoding!r})
-"""
 
 
 @node(
@@ -27,7 +21,7 @@ df_{var} = pd.read_csv({path!r}, sep={sep!r}, header={header}, encoding={encodin
         "header": ui("Header Row"),
         "encoding": ui(widget="select", options=["utf-8", "latin-1", "utf-16"]),
     },
-    code=_CODE_CSV_LOADER,
+    code=EXPORT["csv_loader"],
 )
 class CsvLoaderHandler:
     class Config(BaseModel):
@@ -53,20 +47,6 @@ class CsvLoaderHandler:
         )
 
 
-_CODE_SYNTH_DATA = """\
-# --- Node {id}: Synthetic Data ---
-from sklearn.datasets import make_classification, make_regression
-import pandas as pd
-import numpy as np
-if {task!r} == 'regression':
-    X_{var}, y_{var} = make_regression(n_samples={rows}, n_features={features}, noise=0.1)
-else:
-    X_{var}, y_{var} = make_classification(n_samples={rows}, n_features={features})
-df_{var} = pd.DataFrame(X_{var}, columns=[f'feature_{{i}}' for i in range({features})])
-df_{var}['target'] = y_{var}
-"""
-
-
 @node(
     "synth_data", label="Synthetic Data", category="data",
     description="Generate synthetic training data",
@@ -76,7 +56,7 @@ df_{var}['target'] = y_{var}
         "features": ui(),
         "task": ui("Task Type", widget="select", options=["classification", "regression", "clustering"]),
     },
-    code=_CODE_SYNTH_DATA,
+    code=EXPORT["synth_data"],
 )
 class SynthDataHandler:
     class Config(BaseModel):
@@ -92,7 +72,9 @@ class SynthDataHandler:
         else:
             X, y = make_classification(
                 n_samples=cfg.rows, n_features=cfg.features,
-                n_informative=min(cfg.features, 5), random_state=42,
+                n_informative=min(cfg.features, 5),
+                n_redundant=max(0, min(2, cfg.features - min(cfg.features, 5))),  # informative + redundant <= features
+                random_state=42,
             )
         df = pd.DataFrame(X, columns=[f"feature_{i}" for i in range(cfg.features)])
         df["target"] = y
@@ -112,7 +94,7 @@ class SynthDataHandler:
         "sheet": ui("Sheet Name"),
         "header": ui("Header Row"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["excel_loader"],
 )
 class ExcelLoaderHandler:
     class Config(BaseModel):
@@ -143,7 +125,7 @@ class ExcelLoaderHandler:
         "path": ui("File Path"),
         "orient": ui("Orientation"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["json_loader"],
 )
 class JsonLoaderHandler:
     class Config(BaseModel):
@@ -174,7 +156,7 @@ class JsonLoaderHandler:
         "on": ui("Join Key"),
         "how": ui("Join Type"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["data_merge"],
 )
 class DataMergeHandler:
     class Config(BaseModel):
@@ -211,7 +193,7 @@ class DataMergeHandler:
         "frac": ui("Fraction"),
         "random_state": ui("Random Seed"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["data_sample"],
 )
 class DataSampleHandler:
     class Config(BaseModel):
@@ -242,7 +224,7 @@ class DataSampleHandler:
         "columns": ui("Column Names (comma-separated)"),
         "data": ui("Data Rows (one row per line, comma-separated values)", widget="textarea"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["manual_input"],
 )
 class ManualInputHandler:
     class Config(BaseModel):
@@ -283,25 +265,6 @@ class ManualInputHandler:
         )
 
 
-def _sql_env_var(connection: str) -> str:
-    return "ATHENA_" + "".join(c if c.isalnum() else "_" for c in connection).upper() + "_URL"
-
-
-def _code_sql_query(v: dict) -> str:
-    env = _sql_env_var(v["connection"] or "database")
-    limit = f"\ndf_{v['var']} = df_{v['var']}.head({int(v['limit'])})" if v["limit"] else ""
-    return (
-        f"# --- Node {v['id']}: SQL Query (connection {v['connection']!r}) ---\n"
-        "import os\n"
-        "import pandas as pd\n"
-        "from sqlalchemy import create_engine, text\n"
-        f"# Set {env} to the database's SQLAlchemy URL. Athena never writes credentials into exported code.\n"
-        f"engine_{v['var']} = create_engine(os.environ[{env!r}])\n"
-        f"with engine_{v['var']}.connect() as _conn:\n"
-        f"    df_{v['var']} = pd.read_sql_query(text({v['query']!r}), _conn){limit}\n"
-    )
-
-
 @node(
     "db_connector", label="SQL Query", category="data",
     description="Run a SQL query against a saved database connection",
@@ -311,7 +274,7 @@ def _code_sql_query(v: dict) -> str:
         "query": ui("SQL Query", widget="textarea", mono=True),
         "limit": ui("Row limit", help="0 = no limit"),
     },
-    code=_code_sql_query,
+    code=EXPORT["db_connector"],
 )
 class DbConnectorHandler:
     class Config(BaseModel):

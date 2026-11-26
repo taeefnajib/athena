@@ -3,25 +3,13 @@ from typing import Literal
 import pandas as pd
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe, get_target_column
 from athena.schemas.artifacts import TextPreview
 
 
-_CODE_TRAIN_TEST = """\
-# --- Node {id}: Train/Test Split ---
-from sklearn.model_selection import train_test_split
-import pandas as pd
-_target_col_{var} = 'target' if 'target' in df_{src}.columns else df_{src}.columns[-1]
-X_{var} = df_{src}.drop(columns=[_target_col_{var}])
-y_{var} = df_{src}[_target_col_{var}]
-X_train_{var}, X_test_{var}, y_train_{var}, y_test_{var} = train_test_split(
-    X_{var}, y_{var}, test_size={test_size}, random_state={random_state}
-)
-df_train_{var} = X_train_{var}.copy(); df_train_{var}[_target_col_{var}] = y_train_{var}
-df_test_{var} = X_test_{var}.copy(); df_test_{var}[_target_col_{var}] = y_test_{var}
-"""
 
 
 @node(
@@ -35,7 +23,7 @@ df_test_{var} = X_test_{var}.copy(); df_test_{var}[_target_col_{var}] = y_test_{
         "stratify": ui(),
         "target_col": ui("Target Column (blank = auto)"),
     },
-    code=_CODE_TRAIN_TEST,
+    code=EXPORT["train_test"],
 )
 class TrainTestHandler:
     class Config(BaseModel):
@@ -80,7 +68,7 @@ class TrainTestHandler:
         "random_state": ui("Random Seed"),
         "target_col": ui("Target Column (blank = auto)"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["train_val_test"],
 )
 class TrainValTestHandler:
     class Config(BaseModel):
@@ -131,7 +119,7 @@ class TrainValTestHandler:
         "shuffle": ui(),
         "random_state": ui("Random Seed"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["cv_split"],
 )
 class CvSplitHandler:
     class Config(BaseModel):
@@ -191,7 +179,7 @@ class CvSplitHandler:
     fields={
         "target_col": ui("Target Column (blank = auto-detect last)"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["dataset_to_xy"],
 )
 class DatasetToXyHandler:
     class Config(BaseModel):
@@ -224,7 +212,7 @@ class DatasetToXyHandler:
     fields={
         "target_col": ui("Target Column Name"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["xy_to_dataset"],
 )
 class XyToDatasetHandler:
     class Config(BaseModel):

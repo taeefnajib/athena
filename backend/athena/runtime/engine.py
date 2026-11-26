@@ -58,8 +58,12 @@ def run_spec(
     cancelled: Callable[[], bool],
     cache_dir: Path,
     start_from: list[str] | None = None,
+    artifacts_out: dict[tuple[str, int], object] | None = None,
 ) -> str:
-    """Run every node in topological order. Returns the final status (completed | error | cancelled)."""
+    """Run every node in topological order. Returns the final status (completed | error | cancelled).
+
+    ``artifacts_out``, if given, receives every node output keyed by (node_id, port) (used by tests that
+    compare Athena's results with the exported script's)."""
     from athena.plugins import load_plugins
     load_plugins()  # idempotent; the worker has already done it
     base_log = structlog.get_logger().bind(run_id=run_id)
@@ -81,7 +85,7 @@ def run_spec(
 
     observers = notify(build_observers(spec, emit), emit, "on_run_start", spec, run_id, emit)
 
-    artifacts: dict[tuple[str, int], object] = {}
+    artifacts: dict[tuple[str, int], object] = artifacts_out if artifacts_out is not None else {}
     node_cache_keys: dict[str, str] = {}
 
     for node_id in order:

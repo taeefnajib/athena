@@ -68,8 +68,8 @@ def test_boosting_export(node_type: str, needle: str):
     spec = PipelineSpec.model_validate({"nodes": [
         {"id": "s", "type": "train_test", "position": {"x": 0, "y": 0}, "config": {}},
         {"id": "m", "type": node_type, "position": {"x": 1, "y": 0}, "config": {}},
-    ], "edges": [{"id": "e", "source": "s", "target": "m"}]})
+    ], "edges": [{"id": "e", "source": "s", "target": "m"}, {"id": "e2", "source": "s", "target": "m", "source_port": 1, "target_port": 1}]})
     code = pipeline_to_python(spec)
-    assert needle in code and "model_m.fit(X_tr_m, y_tr_m)" in code
+    assert needle in code and "model_m.fit(X_train_s, y_train_s)" in code
     if node_type.startswith("catboost"):
-        assert "cat_features=_cats_m or None" in code and "_cats_m = [c for c in X_tr_m.columns" in code
+        assert "cat_features=_cats or None" in code and "_cats = [c for c in X_train_s.columns" in code

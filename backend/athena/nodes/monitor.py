@@ -3,6 +3,7 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.artifacts import TextPreview, MetricsPreview
@@ -18,7 +19,7 @@ from athena.utils.dataframes import get_target_column
         "method": ui(),
         "threshold": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["drift_detect"],
 )
 class DriftDetectHandler:
     class Config(BaseModel):
@@ -88,7 +89,7 @@ class DriftDetectHandler:
         "metric": ui(),
         "window": ui("Window (days)"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["perf_tracker"],
 )
 class PerfTrackerHandler:
     class Config(BaseModel):

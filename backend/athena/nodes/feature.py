@@ -4,20 +4,12 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 
 
-_CODE_SCALER = """\
-# --- Node {id}: Scaler ---
-from sklearn.preprocessing import {method}
-import pandas as pd
-_scaler_{var} = {method}()
-df_{var} = df_{src}.copy()
-_num_cols_{var} = df_{var}.select_dtypes(include='number').columns.drop('target', errors='ignore').tolist()
-df_{var}[_num_cols_{var}] = _scaler_{var}.fit_transform(df_{var}[_num_cols_{var}])
-"""
 
 
 @node(
@@ -29,7 +21,7 @@ df_{var}[_num_cols_{var}] = _scaler_{var}.fit_transform(df_{var}[_num_cols_{var}
         "method": ui(),
         "cols": ui("Columns"),
     },
-    code=_CODE_SCALER,
+    code=EXPORT["scaler"],
 )
 class ScalerHandler:
     class Config(BaseModel):
@@ -70,7 +62,7 @@ class ScalerHandler:
         "drop": ui("Drop First"),
         "sparse": ui("Sparse Output"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["ohe"],
 )
 class OheHandler:
     class Config(BaseModel):
@@ -108,7 +100,7 @@ class OheHandler:
     fields={
         "cols": ui("Columns"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["label_enc"],
 )
 class LabelEncHandler:
     class Config(BaseModel):
@@ -138,7 +130,7 @@ class LabelEncHandler:
         "expand": ui("Expand to Columns"),
         "prefix": ui("Column Prefix"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["str_split"],
 )
 class StrSplitHandler:
     class Config(BaseModel):
@@ -178,7 +170,7 @@ class StrSplitHandler:
         "mode": ui(),
         "cols": ui("Columns"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["col_selector"],
 )
 class ColSelectorHandler:
     class Config(BaseModel):
@@ -208,7 +200,7 @@ class ColSelectorHandler:
         "degree": ui(),
         "interaction": ui("Interaction Only"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["feat_gen"],
 )
 class FeatGenHandler:
     class Config(BaseModel):
@@ -249,7 +241,7 @@ class FeatGenHandler:
         "method": ui(),
         "max_features": ui("Max Features"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["tfidf"],
 )
 class TfidfHandler:
     class Config(BaseModel):
@@ -285,7 +277,7 @@ class TfidfHandler:
         "col": ui("Date Column"),
         "features": ui("Extract"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["date_feat"],
 )
 class DateFeatHandler:
     class Config(BaseModel):
@@ -324,7 +316,7 @@ class DateFeatHandler:
         "k": ui("Top K Features"),
         "method": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["feat_imp_sel"],
 )
 class FeatImpSelHandler:
     class Config(BaseModel):
@@ -362,7 +354,7 @@ class FeatImpSelHandler:
         "n_components": ui("Components"),
         "whiten": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["pca"],
 )
 class PcaHandler:
     class Config(BaseModel):

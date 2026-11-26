@@ -4,6 +4,7 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
@@ -59,7 +60,7 @@ def _parse_values(spec: str) -> list:
         "n_jobs": ui("Parallel Jobs (-1 = all cores)", min=-1),
         "params": ui("Parameter Grid", widget="hp_params"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["hp_tune"],
 )
 class HpTuneHandler:
     class Config(BaseModel):
@@ -121,7 +122,7 @@ class HpTuneHandler:
     fields={
         "memory": ui("Cache Pipeline"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["pipeline_wrap"],
 )
 class PipelineWrapHandler:
     class Config(BaseModel):
@@ -147,7 +148,7 @@ class PipelineWrapHandler:
     fields={
         "code": ui("Python Code", widget="textarea", mono=True),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["custom_code"],
 )
 class CustomCodeHandler:
     class Config(BaseModel):

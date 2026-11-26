@@ -3,6 +3,7 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.plotting import fig_to_plot_preview
@@ -18,7 +19,7 @@ from athena.schemas.artifacts import TextPreview
         "plot": ui("Plot Type"),
         "n_samples": ui("Samples"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["shap"],
 )
 class ShapHandler:
     class Config(BaseModel):
@@ -72,7 +73,7 @@ class ShapHandler:
     description="Diagnose model issues and errors",
     inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
     outputs=[Port("report", "report")],
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["debugger"],
 )
 class DebuggerHandler:
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:

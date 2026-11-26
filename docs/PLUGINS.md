@@ -35,10 +35,11 @@ register_category("community", "Community")          # only if you need a new li
     description="Clip a column to its percentiles",
     inputs=[Port("dataset", "dataset")], outputs=[Port("dataset", "dataset")],
     fields={"col": ui("Column"), "pct": ui("Percentile", min=0, max=0.5, step=0.01)},
-    code=(                                             # the exported Python for this node
-        "# --- Node {id}: Winsorize ---\n"
-        "lo, hi = df_{src}[{col!r}].quantile([{pct}, 1 - {pct}])\n"
-        "df_{var} = df_{src}.assign(**{{{col!r}: df_{src}[{col!r}].clip(lo, hi)}})\n"
+    code=lambda v: (                                   # the exported Python for this node
+        f"lo, hi = {v['in_dataset']}[{v['col']!r}].quantile([{v['pct']}, 1 - {v['pct']}])
+"
+        f"{v['out_dataset']} = {v['in_dataset']}.assign(**{{{v['col']!r}: {v['in_dataset']}[{v['col']!r}].clip(lo, hi)}})
+"
     ),
 )
 class Winsorize:
@@ -60,7 +61,7 @@ Rules (checked by `tests/test_node_specs.py` for built-ins; run the same checks 
 
 - **Ports** are typed strings. Connections are allowed between equal types, and between `dataset` and the split types (`X_train`, `y_test`, …). You may introduce new types.
 - **Config** is a Pydantic model. `Literal[...]` becomes a select, `bool` a toggle, `int`/`float` a number, `SecretStr` a password field. Use `ui(...)` for labels, help text and special widgets (`textarea`, `file`, `connection`).
-- **Export:** give `code=` (a `str.format` template with `id`, `var`, `src`, `src_model`, `src_test` and your config fields, or a function returning the code), **or** `export_note="why this can't be exported"`. One of them is required.
+- **Export:** give `code=`, a function (or a `str.format` template) that receives `in_<port>` and `out_<port>` (the variable names of the connected inputs and of your outputs), `id`, `var`, `label` and your config fields, and returns the code. Put imports on their own lines at column 0: they are moved to the top of the script and de-duplicated. Or give `export_note="why this can't be exported"`. One of them is required.
 - **Handlers run in a worker process**, never in the API server. Return outputs in port order. Check `ctx.cancelled()` in long loops. Raise `ValueError` with a clear message for user errors.
 
 ## 3. A connector

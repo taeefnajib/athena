@@ -130,7 +130,7 @@ npm run dev
 2. **Configure nodes** — click any node to open the inspector panel on the right; edit settings in the Settings tab.
 3. **Run** — click **Run** (or press `Ctrl/⌘ + Enter`). Nodes light up green as they execute.
 4. **Inspect results** — click a completed node and switch to the **Data Preview**, **Logs**, or **Metrics** tabs.
-5. **Export code** — click **Export Code** in the top bar to download a standalone Python script, Jupyter notebook, or pipeline JSON.
+5. **Export code** — click **Export Code** in the top bar to download a standalone Python script, a Jupyter notebook (one cell per node), or the pipeline JSON. The code needs only the libraries it imports, follows your graph exactly, and is tested to produce the same results as running the pipeline in Athena. Plots are saved as PNG files next to the script.
 6. **Save / Load** — click **Save** (or `Ctrl/⌘ + S`) and enter a file path. Load pipelines via `POST /api/pipelines/load` or by adding a load button (coming in v1.1).
 
 ### Connections (databases)

@@ -3,6 +3,7 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe, get_target_column
@@ -17,7 +18,7 @@ from athena.utils.dataframes import preview_dataframe, get_target_column
         "k_neighbors": ui("K Neighbors"),
         "random_state": ui("Random Seed"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["smote"],
 )
 class SmoteHandler:
     class Config(BaseModel):
@@ -57,7 +58,7 @@ class SmoteHandler:
         "strategy": ui(),
         "ratio": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["undersample"],
 )
 class UndersampleHandler:
     class Config(BaseModel):
@@ -103,7 +104,7 @@ class UndersampleHandler:
     fields={
         "strategy": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["oversample"],
 )
 class OversampleHandler:
     class Config(BaseModel):
@@ -142,7 +143,7 @@ class OversampleHandler:
     fields={
         "mode": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["class_weight"],
 )
 class ClassWeightHandler:
     class Config(BaseModel):

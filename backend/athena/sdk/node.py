@@ -22,6 +22,8 @@ class Port:
 
     name: str
     type: str
+    optional: bool = False
+    """Optional inputs (e.g. X_val, hp_config) may stay unconnected; required ones block export and runs."""
 
 
 @dataclass(frozen=True)
@@ -222,7 +224,7 @@ def node_spec(meta: NodeMeta) -> dict[str, Any]:
         "label": meta.label,
         "category": meta.category,
         "description": meta.description,
-        "inputs": [{"name": p.name, "type": p.type} for p in meta.inputs],
+        "inputs": [{"name": p.name, "type": p.type, "optional": p.optional} for p in meta.inputs],
         "outputs": [{"name": p.name, "type": p.type} for p in meta.outputs],
         "config": config_fields(meta),
         "exportable": meta.code is not None,

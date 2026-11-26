@@ -3,6 +3,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.artifacts import ModelPreview
@@ -38,13 +39,13 @@ class _VotingEnsemble:
 @node(
     "voting", label="Voting Classifier", category="ensemble",
     description="Combine up to 5 models by voting — connect at least 2, unused inputs are ignored",
-    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model"), Port("model_4", "model"), Port("model_5", "model")],
+    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model", optional=True), Port("model_4", "model", optional=True), Port("model_5", "model", optional=True)],
     outputs=[Port("model", "model")],
     fields={
         "voting": ui(),
         "weights": ui("Weights (comma-sep, one per connected model)"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["voting"],
 )
 class VotingHandler:
     class Config(BaseModel):
@@ -109,13 +110,13 @@ class _StackingEnsemble:
 @node(
     "stacking", label="Stacking Ensemble", category="ensemble",
     description="Stack up to 5 base models with a meta-learner — connect at least 2 models plus X_train and y_train to fit the meta-learner",
-    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model"), Port("model_4", "model"), Port("model_5", "model"), Port("X_train", "X_train"), Port("y_train", "y_train")],
+    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model", optional=True), Port("model_4", "model", optional=True), Port("model_5", "model", optional=True), Port("X_train", "X_train"), Port("y_train", "y_train")],
     outputs=[Port("model", "model")],
     fields={
         "meta": ui("Meta Learner"),
         "cv": ui("CV Folds"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["stacking"],
 )
 class StackingHandler:
     class Config(BaseModel):
@@ -155,7 +156,7 @@ class StackingHandler:
 @node(
     "blending", label="Blending Node", category="ensemble",
     description="Blend predictions from up to 5 models — connect at least 2, unused inputs are ignored",
-    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model"), Port("model_4", "model"), Port("model_5", "model")],
+    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model", optional=True), Port("model_4", "model", optional=True), Port("model_5", "model", optional=True)],
     outputs=[Port("model", "model")],
     fields={
         "method": ui(widget="select", options=["mean", "weighted_mean", "rank_avg"]),

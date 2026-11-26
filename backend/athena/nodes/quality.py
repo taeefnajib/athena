@@ -5,21 +5,13 @@ import numpy as np
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.ensemble import IsolationForest
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import TextPreview
 
 
-_CODE_IMPUTER = """\
-# --- Node {id}: Missing Value Imputer ---
-from sklearn.impute import SimpleImputer
-import pandas as pd
-_imp_{var} = SimpleImputer(strategy={strategy!r})
-df_{var} = df_{src}.copy()
-_num_cols_{var} = df_{var}.select_dtypes(include='number').columns.tolist()
-df_{var}[_num_cols_{var}] = _imp_{var}.fit_transform(df_{var}[_num_cols_{var}])
-"""
 
 
 @node(
@@ -32,7 +24,7 @@ df_{var}[_num_cols_{var}] = _imp_{var}.fit_transform(df_{var}[_num_cols_{var}])
         "fill_value": ui("Fill Value"),
         "cols": ui("Columns (comma-sep)"),
     },
-    code=_CODE_IMPUTER,
+    code=EXPORT["imputer"],
 )
 class ImputerHandler:
     class Config(BaseModel):
@@ -82,7 +74,7 @@ class ImputerHandler:
         "subset": ui("Subset Columns"),
         "keep": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["dup_remover"],
 )
 class DupRemoverHandler:
     class Config(BaseModel):
@@ -117,7 +109,7 @@ class DupRemoverHandler:
         "cols": ui("Columns (comma-sep, blank = all numeric)"),
         "col_mode": ui("Column Mode"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["outlier"],
 )
 class OutlierHandler:
     class Config(BaseModel):
@@ -196,7 +188,7 @@ class OutlierHandler:
     fields={
         "mappings": ui("Rename Mappings", widget="col_map"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["col_rename"],
 )
 class ColRenameHandler:
     class Config(BaseModel):
@@ -238,7 +230,7 @@ class ColRenameHandler:
     fields={
         "rules": ui("Conversion Rules", widget="textarea"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["type_conv"],
 )
 class TypeConvHandler:
     class Config(BaseModel):
@@ -289,7 +281,7 @@ class TypeConvHandler:
         "schema": ui("Schema (JSON)", widget="textarea"),
         "strict": ui("Strict Mode"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["validator"],
 )
 class ValidatorHandler:
     class Config(BaseModel):

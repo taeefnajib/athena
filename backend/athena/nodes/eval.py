@@ -3,26 +3,13 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.plotting import fig_to_plot_preview
 from athena.schemas.artifacts import MetricsPreview, TextPreview, DataframeInfoPreview, ColumnInfo
 
 
-_CODE_METRICS = """\
-# --- Node {id}: Metrics ---
-from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
-import numpy as np
-_target_col_{var} = 'target' if 'target' in df_test_{src_test}.columns else df_test_{src_test}.columns[-1]
-X_te_{var} = df_test_{src_test}.drop(columns=[_target_col_{var}])
-y_te_{var} = df_test_{src_test}[_target_col_{var}]
-y_pred_{var} = model_{src_model}.predict(X_te_{var})
-if {task!r} == 'regression':
-    metrics_{var} = {{'rmse': float(np.sqrt(mean_squared_error(y_te_{var}, y_pred_{var}))), 'r2': float(r2_score(y_te_{var}, y_pred_{var}))}}
-else:
-    metrics_{var} = {{'accuracy': float(accuracy_score(y_te_{var}, y_pred_{var})), 'f1': float(f1_score(y_te_{var}, y_pred_{var}, average={average!r}))}}
-print(metrics_{var})
-"""
 
 
 @node(
@@ -34,7 +21,7 @@ print(metrics_{var})
         "task": ui(),
         "average": ui(),
     },
-    code=_CODE_METRICS,
+    code=EXPORT["metrics"],
 )
 class MetricsHandler:
     class Config(BaseModel):
@@ -91,7 +78,7 @@ class MetricsHandler:
         "normalize": ui(),
         "cmap": ui("Colormap"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["conf_matrix"],
 )
 class ConfMatrixHandler:
     class Config(BaseModel):
@@ -127,7 +114,7 @@ class ConfMatrixHandler:
     description="Analyze regression residuals",
     inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
     outputs=[Port("plot", "plot")],
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["residual"],
 )
 class ResidualHandler:
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -164,7 +151,7 @@ class ResidualHandler:
     fields={
         "multi_class": ui("Multi-class Strategy"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["roc_curve"],
 )
 class RocCurveHandler:
     class Config(BaseModel):
@@ -219,7 +206,7 @@ class RocCurveHandler:
     fields={
         "top_n": ui("Top N Features"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["feat_imp_viz"],
 )
 class FeatImpVizHandler:
     class Config(BaseModel):
@@ -262,7 +249,7 @@ class FeatImpVizHandler:
     fields={
         "max_unique": ui("Max Unique Values to Show", min=1),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["df_info"],
 )
 class DfInfoHandler:
     class Config(BaseModel):
@@ -337,7 +324,7 @@ class DfInfoHandler:
         "title": ui("Title (optional)"),
         "palette": ui(widget="select", options=["viridis", "coolwarm", "plasma", "Set2", "husl", "tab10"]),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["data_viz"],
 )
 class DataVizHandler:
     class Config(BaseModel):
@@ -509,7 +496,7 @@ class DataVizHandler:
         "top_n": ui("Top N Features (Matrix)", min=2),
         "cmap": ui("Colormap"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["corr_check"],
 )
 class CorrCheckHandler:
     class Config(BaseModel):
@@ -591,7 +578,7 @@ class CorrCheckHandler:
         "show_percent": ui("Show Percentages"),
         "palette": ui(widget="select", options=["viridis", "Set2", "husl", "tab10", "pastel"]),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["class_dist"],
 )
 class ClassDistHandler:
     class Config(BaseModel):

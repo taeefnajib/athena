@@ -23,7 +23,7 @@ export type PortType = string
 /** Categories are open strings: plugins can introduce new ones. */
 export type NodeCategory = string
 
-export interface PortSpec { name: string; type: PortType }
+export interface PortSpec { name: string; type: PortType; optional?: boolean }
 
 export interface NodeSpec {
   type: string

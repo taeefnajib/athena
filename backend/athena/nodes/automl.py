@@ -18,6 +18,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from athena.core.handler import ExecutionContext, HandlerResult
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.utils.dataframes import preview_dataframe
 
@@ -75,30 +76,10 @@ class _LogBridge(logging.Handler):
             self.ctx.logger.info(msg.replace("\t", " "))
 
 
-def _code_automl(v: dict[str, Any]) -> str:
-    est = [e.strip() for e in v["estimators"].split(",") if e.strip()]
-    est_arg = f", estimator_list={est!r}" if est else ""
-    iters = f", max_iter={int(v['n_trials'])}" if v["n_trials"] else ""
-    task = (f"{v['task']!r}" if v["task"] != "auto"
-            else f"'classification' if y_tr_{v['var']}.nunique() <= 20 else 'regression'  # Athena inferred the task")
-    return (
-        f"# --- Node {v['id']}: AutoML Search (FLAML) ---\n"
-        "from flaml import AutoML\n"
-        f"_target_col_{v['var']} = 'target' if 'target' in df_train_{v['src']}.columns else df_train_{v['src']}.columns[-1]\n"
-        f"X_tr_{v['var']} = df_train_{v['src']}.drop(columns=[_target_col_{v['var']}])\n"
-        f"y_tr_{v['var']} = df_train_{v['src']}[_target_col_{v['var']}]\n"
-        f"_task_{v['var']} = {task}\n"
-        f"model_{v['var']} = AutoML()\n"
-        f"model_{v['var']}.fit(X_tr_{v['var']}, y_tr_{v['var']}, task=_task_{v['var']}, metric={v['metric']!r}, "
-        f"time_budget={int(v['time_budget'])}, eval_method={v['eval_method']!r}, seed={int(v['random_state'])}{est_arg}{iters})\n"
-        f"print('Best model:', model_{v['var']}.best_estimator, model_{v['var']}.best_config)\n"
-    )
-
-
 @node(
     "automl", label="AutoML Search", category="advanced",
     description="Try several model families and hyperparameters within a time budget (FLAML) and keep the best",
-    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val")],
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True)],
     outputs=[Port("model", "model"), Port("report", "report")],
     fields={
         "task": ui("Task", help="auto: classification for labels or few distinct integers, otherwise regression"),
@@ -109,7 +90,7 @@ def _code_automl(v: dict[str, Any]) -> str:
         "eval_method": ui("Validation", help="auto: cross-validation for small data, holdout for large. A connected X_val/y_val is used as the holdout."),
         "random_state": ui("Random seed"),
     },
-    code=_code_automl,
+    code=EXPORT["automl"],
 )
 class AutoMLHandler:
     class Config(BaseModel):

@@ -10,7 +10,7 @@ from athena.core.events import broker
 from athena.core.dag import has_cycle
 from athena.storage.files import save_pipeline, load_pipeline
 from athena.storage.autosave import save_autosave, load_latest_autosave
-from athena.core.codegen import pipeline_to_python, pipeline_to_json
+from athena.core.codegen import pipeline_to_json, pipeline_to_notebook, pipeline_to_python
 from athena.config import settings
 
 router = APIRouter(prefix="/api/pipelines")
@@ -75,14 +75,17 @@ async def export(req: ExportRequest):
         content = pipeline_to_python(req.spec)
         filename = "pipeline.py"
         media_type = "text/x-python"
+    elif fmt in ("notebook", "ipynb"):
+        content = pipeline_to_notebook(req.spec)
+        filename = "pipeline.ipynb"
+        media_type = "application/x-ipynb+json"
     elif fmt in ("json",):
         content = pipeline_to_json(req.spec)
         filename = "pipeline.json"
         media_type = "application/json"
     else:
-        content = pipeline_to_json(req.spec)
-        filename = "pipeline.json"
-        media_type = "application/json"
+        raise HTTPException(400, detail={"detail": f"Unknown export format {req.format!r} (python, notebook or json)",
+                                         "code": "EXPORT_FORMAT_UNKNOWN"})
 
     return StreamingResponse(
         io.BytesIO(content.encode()),

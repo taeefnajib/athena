@@ -6,6 +6,7 @@ import joblib
 import pickle
 from pathlib import Path
 
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
@@ -21,7 +22,7 @@ from athena.config import settings
         "path": ui("Output Path"),
         "index": ui("Include Index"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["csv_export"],
 )
 class CsvExportHandler:
     class Config(BaseModel):
@@ -50,7 +51,7 @@ class CsvExportHandler:
         "path": ui("Save Path"),
         "format": ui(),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["model_saver"],
 )
 class ModelSaverHandler:
     class Config(BaseModel):
@@ -83,7 +84,7 @@ class ModelSaverHandler:
         "output_col": ui("Output Column"),
         "proba": ui("Return Probabilities"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["predict"],
 )
 class PredictHandler:
     class Config(BaseModel):
@@ -118,7 +119,7 @@ class PredictHandler:
         "format": ui(),
         "path": ui("Output Path"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["report_gen"],
 )
 class ReportGenHandler:
     class Config(BaseModel):
@@ -254,7 +255,7 @@ class ReportGenHandler:
     fields={
         "path": ui("Save Path (inside ~/.athena/transformers/)"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["transformer_save"],
 )
 class TransformerSaveHandler:
     class Config(BaseModel):
@@ -292,7 +293,7 @@ class TransformerSaveHandler:
         "path": ui("Load Path (inside ~/.athena/transformers/)"),
         "cols": ui("Columns to Transform (comma-sep, blank = auto)"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["transformer_load"],
 )
 class TransformerLoadHandler:
     class Config(BaseModel):
@@ -392,7 +393,7 @@ class TransformerLoadHandler:
         "output_col": ui("Output Column Name"),
         "proba": ui("Return Probabilities"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["model_loader"],
 )
 class ModelLoaderHandler:
     class Config(BaseModel):
@@ -440,7 +441,7 @@ class ModelLoaderHandler:
         "pred_col": ui("Prediction Column Name"),
         "show_input": ui("Show Input Features Too"),
     },
-    export_note="Not exportable yet: no code template for this node.",
+    code=EXPORT["pred_print"],
 )
 class PredPrintHandler:
     class Config(BaseModel):

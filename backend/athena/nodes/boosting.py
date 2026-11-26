@@ -10,10 +10,11 @@ from pydantic import BaseModel, Field
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.nodes.model import _fit_or_tune
 from athena.schemas.artifacts import ModelPreview
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 
-MODEL_INPUTS = [Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"),
-                Port("y_val", "y_val"), Port("hp_config", "hpconfig")]
+MODEL_INPUTS = [Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True),
+                Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)]
 CATBOOST_HINT = "CatBoost isn't installed. Run: pip install 'athena-backend[catboost]' (in backend/: uv sync --extra catboost)"
 
 COMMON_FIELDS = {
@@ -44,18 +45,6 @@ def _fit(ctx: ExecutionContext, model: Any, early_stopping: int, fit_with_eval: 
     return _fit_or_tune(X_train, y_train, model, ctx)
 
 
-def _code(cls: str, module: str, params: str) -> str:
-    return (
-        "# --- Node {id}: " + cls + " ---\n"
-        f"from {module} import {cls}\n"
-        "_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]\n"
-        "X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])\n"
-        "y_tr_{var} = df_train_{src}[_target_col_{var}]\n"
-        "model_{var} = " + cls + "(" + params + ")\n"
-        "model_{var}.fit(X_tr_{var}, y_tr_{var})\n"
-    )
-
-
 # ---- LightGBM ------------------------------------------------------------------------------------
 
 class LgbmConfig(BaseModel):
@@ -72,9 +61,6 @@ class LgbmConfig(BaseModel):
 
 LGBM_FIELDS = {**COMMON_FIELDS, "num_leaves": ui("Leaves per tree", min=2), "min_child_samples": ui("Min samples per leaf", min=1),
                "subsample": ui("Row sample", help="Fraction of rows per tree"), "colsample_bytree": ui("Column sample", help="Fraction of columns per tree")}
-LGBM_PARAMS = ("n_estimators={n_estimators}, learning_rate={learning_rate}, num_leaves={num_leaves}, max_depth={max_depth}, "
-               "min_child_samples={min_child_samples}, subsample={subsample}, subsample_freq=1, colsample_bytree={colsample_bytree}, "
-               "random_state={random_state}, verbose=-1")
 
 
 def _lgbm(cfg: LgbmConfig, cls: Any) -> Any:
@@ -90,7 +76,7 @@ def _lgbm_eval_fit(model: Any, X: pd.DataFrame, y: pd.Series, Xv: pd.DataFrame, 
 
 @node("lgbm", label="LightGBM", category="model", description="Fast gradient boosting with leaf-wise trees (classification)",
       inputs=MODEL_INPUTS, outputs=[Port("model", "model")], fields=LGBM_FIELDS,
-      code=_code("LGBMClassifier", "lightgbm", LGBM_PARAMS))
+      code=EXPORT["lgbm"])
 class LgbmClassifierNode:
     Config = LgbmConfig
 
@@ -103,7 +89,7 @@ class LgbmClassifierNode:
 
 @node("lgbm_reg", label="LightGBM Regressor", category="model", description="Fast gradient boosting with leaf-wise trees (regression)",
       inputs=MODEL_INPUTS, outputs=[Port("model", "model")], fields=LGBM_FIELDS,
-      code=_code("LGBMRegressor", "lightgbm", LGBM_PARAMS))
+      code=EXPORT["lgbm_reg"])
 class LgbmRegressorNode:
     Config = LgbmConfig
 
@@ -129,22 +115,6 @@ class CatBoostConfig(BaseModel):
 CATBOOST_FIELDS = {**COMMON_FIELDS, "max_depth": ui("Depth", min=1, max=16), "l2_leaf_reg": ui("L2 regularization"),
                    "cat_features": ui("Categorical columns", help="Comma-separated. CatBoost encodes them itself, no one-hot needed. "
                                                                   "Empty = text columns are detected automatically")}
-CATBOOST_PARAMS = ("iterations={n_estimators}, learning_rate={learning_rate}, depth={max_depth}, l2_leaf_reg={l2_leaf_reg}, "
-                   "random_seed={random_state}, verbose=False")
-
-
-def _code_catboost(cls: str) -> Any:
-    def render(v: dict[str, Any]) -> str:
-        cats = [c.strip() for c in v["cat_features"].split(",") if c.strip()]
-        var = v["var"]
-        if cats:
-            cat_line = f"_cats_{var} = {cats!r}\n"
-        else:
-            cat_line = f"_cats_{var} = [c for c in X_tr_{var}.columns if not pd.api.types.is_numeric_dtype(X_tr_{var}[c])]\n"
-        base = _code(cls, "catboost", CATBOOST_PARAMS + ", cat_features=_cats_{var} or None").format(**v)
-        head, fit = base.rsplit(f"model_{var} = ", 1)
-        return "import pandas as pd\n" + head + cat_line + f"model_{var} = " + fit
-    return render
 
 
 def _catboost(cfg: CatBoostConfig, cls_name: str, X: pd.DataFrame | None) -> Any:
@@ -168,7 +138,7 @@ def _catboost_eval_fit(model: Any, X: pd.DataFrame, y: pd.Series, Xv: pd.DataFra
 @node("catboost", label="CatBoost", category="model",
       description="Gradient boosting that handles categorical columns natively (classification)",
       inputs=MODEL_INPUTS, outputs=[Port("model", "model")], fields=CATBOOST_FIELDS,
-      code=_code_catboost("CatBoostClassifier"))
+      code=EXPORT["catboost"])
 class CatBoostClassifierNode:
     Config = CatBoostConfig
 
@@ -182,7 +152,7 @@ class CatBoostClassifierNode:
 @node("catboost_reg", label="CatBoost Regressor", category="model",
       description="Gradient boosting that handles categorical columns natively (regression)",
       inputs=MODEL_INPUTS, outputs=[Port("model", "model")], fields=CATBOOST_FIELDS,
-      code=_code_catboost("CatBoostRegressor"))
+      code=EXPORT["catboost_reg"])
 class CatBoostRegressorNode:
     Config = CatBoostConfig
 

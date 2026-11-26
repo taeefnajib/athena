@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.core.registry import register_category
 from athena.schemas.artifacts import ModelPreview, TextPreview
+from athena.nodes.export import EXPORT
 from athena.sdk import Port, node, ui
 from athena.tracking.observer import SERIALIZATION, pip_requirements
 
@@ -16,20 +17,6 @@ register_category("registry", "Model Registry", "◆")
 
 LOCAL_LABEL = "Local MLflow store (~/.athena/mlflow)"
 ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,254}$")
-
-
-def _code_register(v: dict[str, Any]) -> str:
-    alias = (f"mlflow.MlflowClient().set_registered_model_alias({v['model_name']!r}, {v['alias']!r}, _mv_{v['var']}.version)\n"
-             if v["alias"] else "")
-    return (
-        f"# --- Node {v['id']}: Register Model ---\n"
-        "import mlflow\n"
-        "# Registers into the server in MLFLOW_TRACKING_URI (Athena's local store is sqlite:///<home>/.athena/mlflow/mlflow.db).\n"
-        f"with mlflow.start_run(run_name='register {v['model_name']}'):\n"
-        f"    _info_{v['var']} = mlflow.sklearn.log_model(model_{v['src']}, name='model', serialization_format='cloudpickle')\n"
-        f"_mv_{v['var']} = mlflow.register_model(_info_{v['var']}.model_uri, {v['model_name']!r})\n"
-        f"{alias}"
-    )
 
 
 @node(
@@ -41,7 +28,7 @@ def _code_register(v: dict[str, Any]) -> str:
         "alias": ui("Alias", help="Optional, e.g. champion or staging. Moves to this new version."),
         "description": ui("Version description", widget="textarea"),
     },
-    code=_code_register,
+    code=EXPORT["mlflow_register"],
 )
 class RegisterModel:
     class Config(BaseModel):
@@ -100,15 +87,6 @@ def _model_uri(name: str, version: str, alias: str) -> str:
     return f"models:/{name}/{version or 'latest'}"
 
 
-def _code_load(v: dict[str, Any]) -> str:
-    return (
-        f"# --- Node {v['id']}: Load Registered Model ---\n"
-        "import mlflow\n"
-        "# Reads from the server in MLFLOW_TRACKING_URI.\n"
-        f"model_{v['var']} = mlflow.sklearn.load_model({_model_uri(v['model_name'], v['version'], v['alias'])!r})\n"
-    )
-
-
 @node(
     "mlflow_load", label="Load Registered Model", category="registry",
     description="Load a model from the MLflow Model Registry by alias or version",
@@ -119,7 +97,7 @@ def _code_load(v: dict[str, Any]) -> str:
         "alias": ui("Alias", help="e.g. champion. Takes precedence over Version."),
         "version": ui("Version", help="A version number, or latest"),
     },
-    code=_code_load,
+    code=EXPORT["mlflow_load"],
 )
 class LoadRegisteredModel:
     class Config(BaseModel):
