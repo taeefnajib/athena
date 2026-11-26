@@ -6,14 +6,23 @@ import joblib
 import pickle
 from pathlib import Path
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import TextPreview, DataframePreview
 from athena.config import settings
 
 
-@register("csv_export")
+@node(
+    "csv_export", label="CSV Export", category="deploy",
+    description="Save dataset to CSV file",
+    inputs=[Port("dataset", "dataset")],
+    fields={
+        "path": ui("Output Path"),
+        "index": ui("Include Index"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class CsvExportHandler:
     class Config(BaseModel):
         path: str = "output.csv"
@@ -33,7 +42,16 @@ class CsvExportHandler:
         )
 
 
-@register("model_saver")
+@node(
+    "model_saver", label="Model Saver", category="deploy",
+    description="Serialize model with pickle/joblib",
+    inputs=[Port("model", "model")],
+    fields={
+        "path": ui("Save Path"),
+        "format": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ModelSaverHandler:
     class Config(BaseModel):
         path: str = "model.pkl"
@@ -56,7 +74,17 @@ class ModelSaverHandler:
         )
 
 
-@register("predict")
+@node(
+    "predict", label="Prediction Node", category="deploy",
+    description="Batch prediction on new data",
+    inputs=[Port("model", "model"), Port("dataset", "dataset")],
+    outputs=[Port("predictions", "predictions")],
+    fields={
+        "output_col": ui("Output Column"),
+        "proba": ui("Return Probabilities"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class PredictHandler:
     class Config(BaseModel):
         output_col: str = "y_pred"
@@ -82,7 +110,16 @@ class PredictHandler:
         )
 
 
-@register("report_gen")
+@node(
+    "report_gen", label="Report Generator", category="deploy",
+    description="Generate PDF/HTML/Jupyter summary report",
+    inputs=[Port("report", "report")],
+    fields={
+        "format": ui(),
+        "path": ui("Output Path"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ReportGenHandler:
     class Config(BaseModel):
         format: Literal["HTML", "PDF", "Jupyter"] = "HTML"
@@ -209,7 +246,16 @@ class ReportGenHandler:
         )
 
 
-@register("transformer_save")
+@node(
+    "transformer_save", label="Transformer Save", category="deploy",
+    description="Serialize a fitted scaler or encoder to disk for reuse",
+    inputs=[Port("transformer", "transformer"), Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "path": ui("Save Path (inside ~/.athena/transformers/)"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class TransformerSaveHandler:
     class Config(BaseModel):
         path: str = "transformer.pkl"
@@ -237,7 +283,17 @@ class TransformerSaveHandler:
         )
 
 
-@register("transformer_load")
+@node(
+    "transformer_load", label="Transformer Load", category="deploy",
+    description="Load a saved transformer and apply it to a dataset",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "path": ui("Load Path (inside ~/.athena/transformers/)"),
+        "cols": ui("Columns to Transform (comma-sep, blank = auto)"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class TransformerLoadHandler:
     class Config(BaseModel):
         path: str = "transformer.pkl"
@@ -326,7 +382,18 @@ class TransformerLoadHandler:
         )
 
 
-@register("model_loader")
+@node(
+    "model_loader", label="Model Loader", category="deploy",
+    description="Load a saved model from disk and run predictions on the connected dataset",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("predictions", "predictions")],
+    fields={
+        "path": ui("Model File Path"),
+        "output_col": ui("Output Column Name"),
+        "proba": ui("Return Probabilities"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ModelLoaderHandler:
     class Config(BaseModel):
         path: str = "model.pkl"
@@ -365,7 +432,16 @@ class ModelLoaderHandler:
         )
 
 
-@register("pred_print")
+@node(
+    "pred_print", label="Prediction Printer", category="deploy",
+    description="Display prediction values from a Prediction Node — shows each record's predicted value in the preview tab",
+    inputs=[Port("predictions", "predictions")],
+    fields={
+        "pred_col": ui("Prediction Column Name"),
+        "show_input": ui("Show Input Features Too"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class PredPrintHandler:
     class Config(BaseModel):
         pred_col: str = "y_pred"
@@ -407,12 +483,25 @@ class PredPrintHandler:
         )
 
 
-def _stub(type_name: str):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(f"{type_name} is not yet implemented in v1.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
+@node(
+    "api_gen", label="API Generator", category="deploy",
+    description="Expose model as REST API endpoint",
+    inputs=[Port("model", "model")],
+    outputs=[Port("endpoint", "endpoint")],
+    fields={
+        "host": ui(widget="text"),
+        "port": ui(widget="number"),
+        "framework": ui(widget="select", options=["FastAPI", "Flask"]),
+    },
+    export_note="Not implemented yet.",
+    available=False, unavailable_reason="Not implemented yet: model serving via BentoML is roadmap phase 2.",
+)
+class ApiGenHandler:
+    class Config(BaseModel):
+        host: str = '0.0.0.0'
+        port: int = 8000
+        framework: str = 'FastAPI'
 
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        raise NotImplementedError("Not implemented yet: model serving via BentoML is roadmap phase 2.")
 
-_stub("api_gen")

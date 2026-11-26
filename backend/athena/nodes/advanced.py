@@ -4,7 +4,7 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import ModelPreview, TextPreview
@@ -47,7 +47,20 @@ def _parse_values(spec: str) -> list:
     return result
 
 
-@register("hp_tune")
+@node(
+    "hp_tune", label="HP Tuning Config", category="advanced",
+    description="Emit a hyperparameter search config to connect to any model node",
+    outputs=[Port("hp_config", "hpconfig")],
+    fields={
+        "method": ui(),
+        "scoring": ui("Scoring Metric", widget="select", options=["accuracy", "f1_weighted", "f1_macro", "roc_auc", "r2", "neg_root_mean_squared_error", "neg_mean_absolute_error"]),
+        "n_iter": ui("Iterations (Random/Bayesian only)", min=1),
+        "cv": ui("CV Folds", min=2),
+        "n_jobs": ui("Parallel Jobs (-1 = all cores)", min=-1),
+        "params": ui("Parameter Grid", widget="hp_params"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class HpTuneHandler:
     class Config(BaseModel):
         method: Literal["Grid", "Random", "Bayesian"] = "Random"
@@ -100,7 +113,16 @@ class HpTuneHandler:
         )
 
 
-@register("pipeline_wrap")
+@node(
+    "pipeline_wrap", label="Pipeline Wrapper", category="advanced",
+    description="Wrap preprocessing + model into a pipeline",
+    inputs=[Port("dataset", "dataset"), Port("model", "model")],
+    outputs=[Port("pipeline", "pipeline")],
+    fields={
+        "memory": ui("Cache Pipeline"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class PipelineWrapHandler:
     class Config(BaseModel):
         memory: bool = False
@@ -117,7 +139,16 @@ class PipelineWrapHandler:
         )
 
 
-@register("custom_code")
+@node(
+    "custom_code", label="Custom Code Node", category="advanced",
+    description="Execute custom Python snippet",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "code": ui("Python Code", widget="textarea", mono=True),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class CustomCodeHandler:
     class Config(BaseModel):
         code: str = "# df is your DataFrame\ndf['new_col'] = df['col1'] * 2\nreturn df"
@@ -139,12 +170,25 @@ class CustomCodeHandler:
         return HandlerResult(outputs=[result], preview=preview_dataframe(result))
 
 
-def _stub(type_name: str):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(f"{type_name} is not yet implemented in v1.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
+@node(
+    "automl", label="AutoML Search", category="advanced",
+    description="Auto-select best model and hyperparams",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val")],
+    outputs=[Port("model", "model"), Port("report", "report")],
+    fields={
+        "time_budget": ui("Time Budget (s)", widget="number"),
+        "metric": ui("Optimize", widget="select", options=["accuracy", "f1", "roc_auc", "rmse", "r2"]),
+        "n_trials": ui("Trials", widget="number"),
+    },
+    export_note="Not implemented yet.",
+    available=False, unavailable_reason="Not implemented yet: AutoML via FLAML/Optuna is roadmap phase 1.",
+)
+class AutomlHandler:
+    class Config(BaseModel):
+        time_budget: int = 60
+        metric: str = 'accuracy'
+        n_trials: int = 50
 
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        raise NotImplementedError("Not implemented yet: AutoML via FLAML/Optuna is roadmap phase 1.")
 
-_stub("automl")

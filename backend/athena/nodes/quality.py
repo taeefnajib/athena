@@ -5,13 +5,35 @@ import numpy as np
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.ensemble import IsolationForest
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import TextPreview
 
 
-@register("imputer")
+_CODE_IMPUTER = """\
+# --- Node {id}: Missing Value Imputer ---
+from sklearn.impute import SimpleImputer
+import pandas as pd
+_imp_{var} = SimpleImputer(strategy={strategy!r})
+df_{var} = df_{src}.copy()
+_num_cols_{var} = df_{var}.select_dtypes(include='number').columns.tolist()
+df_{var}[_num_cols_{var}] = _imp_{var}.fit_transform(df_{var}[_num_cols_{var}])
+"""
+
+
+@node(
+    "imputer", label="Missing Value Imputer", category="quality",
+    description="Fill missing values using various strategies",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "strategy": ui(),
+        "fill_value": ui("Fill Value"),
+        "cols": ui("Columns (comma-sep)"),
+    },
+    code=_CODE_IMPUTER,
+)
 class ImputerHandler:
     class Config(BaseModel):
         strategy: Literal["mean", "median", "mode", "constant", "knn"] = "mean"
@@ -51,7 +73,17 @@ class ImputerHandler:
         )
 
 
-@register("dup_remover")
+@node(
+    "dup_remover", label="Duplicate Remover", category="quality",
+    description="Remove duplicate rows",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "subset": ui("Subset Columns"),
+        "keep": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class DupRemoverHandler:
     class Config(BaseModel):
         subset: str = ""
@@ -73,7 +105,20 @@ class DupRemoverHandler:
         )
 
 
-@register("outlier")
+@node(
+    "outlier", label="Outlier Detector", category="quality",
+    description="Detect and handle outliers in selected numeric columns",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset"), Port("outliers", "outliers")],
+    fields={
+        "method": ui(),
+        "action": ui(),
+        "threshold": ui("Threshold (Z-Score)"),
+        "cols": ui("Columns (comma-sep, blank = all numeric)"),
+        "col_mode": ui("Column Mode"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class OutlierHandler:
     class Config(BaseModel):
         method: Literal["IQR", "Z-Score", "Isolation Forest"] = "IQR"
@@ -143,7 +188,16 @@ class OutlierHandler:
         )
 
 
-@register("col_rename")
+@node(
+    "col_rename", label="Column Renamer", category="quality",
+    description="Rename one or more columns",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "mappings": ui("Rename Mappings", widget="col_map"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ColRenameHandler:
     class Config(BaseModel):
         mappings: list[dict[str, str]] = []
@@ -176,7 +230,16 @@ class ColRenameHandler:
         )
 
 
-@register("type_conv")
+@node(
+    "type_conv", label="Type Converter", category="quality",
+    description="Convert column data types",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "rules": ui("Conversion Rules", widget="textarea"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class TypeConvHandler:
     class Config(BaseModel):
         rules: str = "col1: float\ncol2: int"
@@ -217,7 +280,17 @@ class TypeConvHandler:
         )
 
 
-@register("validator")
+@node(
+    "validator", label="Data Validator", category="quality",
+    description="Enforce schema and constraints",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset"), Port("report", "report")],
+    fields={
+        "schema": ui("Schema (JSON)", widget="textarea"),
+        "strict": ui("Strict Mode"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ValidatorHandler:
     class Config(BaseModel):
         schema: str = '{"col1": "float", "col2": "str"}'

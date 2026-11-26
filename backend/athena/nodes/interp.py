@@ -3,13 +3,23 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.plotting import fig_to_plot_preview
 from athena.schemas.artifacts import TextPreview
 
 
-@register("shap")
+@node(
+    "shap", label="SHAP Explainer", category="interp",
+    description="SHAP-based model explanations",
+    inputs=[Port("model", "model"), Port("X_test", "X_test")],
+    outputs=[Port("report", "report")],
+    fields={
+        "plot": ui("Plot Type"),
+        "n_samples": ui("Samples"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ShapHandler:
     class Config(BaseModel):
         plot: Literal["summary", "bar", "waterfall", "beeswarm"] = "summary"
@@ -57,7 +67,13 @@ class ShapHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("debugger")
+@node(
+    "debugger", label="Model Debugger", category="interp",
+    description="Diagnose model issues and errors",
+    inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    outputs=[Port("report", "report")],
+    export_note="Not exportable yet: no code template for this node.",
+)
 class DebuggerHandler:
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
         model = ctx.inputs[0]
@@ -94,12 +110,23 @@ class DebuggerHandler:
         )
 
 
-def _stub(type_name: str):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(f"{type_name} is not yet implemented in v1.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
+@node(
+    "lime", label="LIME Explainer", category="interp",
+    description="Local interpretable explanations",
+    inputs=[Port("model", "model"), Port("X_test", "X_test")],
+    outputs=[Port("report", "report")],
+    fields={
+        "n_features": ui("Top Features", widget="number"),
+        "mode": ui(widget="select", options=["classification", "regression"]),
+    },
+    export_note="Not implemented yet.",
+    available=False, unavailable_reason="Not implemented yet (roadmap phase 1).",
+)
+class LimeHandler:
+    class Config(BaseModel):
+        n_features: int = 10
+        mode: str = 'classification'
 
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        raise NotImplementedError("Not implemented yet (roadmap phase 1).")
 
-_stub("lime")

@@ -1,99 +1,10 @@
 import json
 from athena.schemas.pipeline import PipelineSpec
 from athena.core.dag import topo_sort
+from athena.core.registry import NODE_META
+from athena.sdk import config_defaults
+import athena.nodes  # noqa: F401  (registers the built-in nodes)
 
-_NODE_TEMPLATES: dict[str, str] = {
-    "csv_loader": """\
-# --- Node {id}: CSV Loader ---
-import pandas as pd
-df_{var} = pd.read_csv({path!r}, sep={sep!r}, header={header}, encoding={encoding!r})
-""",
-    "synth_data": """\
-# --- Node {id}: Synthetic Data ---
-from sklearn.datasets import make_classification, make_regression
-import pandas as pd
-import numpy as np
-if {task!r} == 'regression':
-    X_{var}, y_{var} = make_regression(n_samples={rows}, n_features={features}, noise=0.1)
-else:
-    X_{var}, y_{var} = make_classification(n_samples={rows}, n_features={features})
-df_{var} = pd.DataFrame(X_{var}, columns=[f'feature_{{i}}' for i in range({features})])
-df_{var}['target'] = y_{var}
-""",
-    "imputer": """\
-# --- Node {id}: Missing Value Imputer ---
-from sklearn.impute import SimpleImputer
-import pandas as pd
-_imp_{var} = SimpleImputer(strategy={strategy!r})
-df_{var} = df_{src}.copy()
-_num_cols_{var} = df_{var}.select_dtypes(include='number').columns.tolist()
-df_{var}[_num_cols_{var}] = _imp_{var}.fit_transform(df_{var}[_num_cols_{var}])
-""",
-    "scaler": """\
-# --- Node {id}: Scaler ---
-from sklearn.preprocessing import {method}
-import pandas as pd
-_scaler_{var} = {method}()
-df_{var} = df_{src}.copy()
-_num_cols_{var} = df_{var}.select_dtypes(include='number').columns.drop('target', errors='ignore').tolist()
-df_{var}[_num_cols_{var}] = _scaler_{var}.fit_transform(df_{var}[_num_cols_{var}])
-""",
-    "train_test": """\
-# --- Node {id}: Train/Test Split ---
-from sklearn.model_selection import train_test_split
-import pandas as pd
-_target_col_{var} = 'target' if 'target' in df_{src}.columns else df_{src}.columns[-1]
-X_{var} = df_{src}.drop(columns=[_target_col_{var}])
-y_{var} = df_{src}[_target_col_{var}]
-X_train_{var}, X_test_{var}, y_train_{var}, y_test_{var} = train_test_split(
-    X_{var}, y_{var}, test_size={test_size}, random_state={random_state}
-)
-df_train_{var} = X_train_{var}.copy(); df_train_{var}[_target_col_{var}] = y_train_{var}
-df_test_{var} = X_test_{var}.copy(); df_test_{var}[_target_col_{var}] = y_test_{var}
-""",
-    "rf": """\
-# --- Node {id}: Random Forest ---
-from sklearn.ensemble import RandomForestClassifier
-import pandas as pd
-_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]
-X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])
-y_tr_{var} = df_train_{src}[_target_col_{var}]
-model_{var} = RandomForestClassifier(n_estimators={n_estimators}, max_depth={max_depth}, random_state={random_state})
-model_{var}.fit(X_tr_{var}, y_tr_{var})
-""",
-    "lin_reg": """\
-# --- Node {id}: Linear Regression ---
-from sklearn.linear_model import LinearRegression
-_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]
-X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])
-y_tr_{var} = df_train_{src}[_target_col_{var}]
-model_{var} = LinearRegression(fit_intercept={fit_intercept})
-model_{var}.fit(X_tr_{var}, y_tr_{var})
-""",
-    "log_reg": """\
-# --- Node {id}: Logistic Regression ---
-from sklearn.linear_model import LogisticRegression
-_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]
-X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])
-y_tr_{var} = df_train_{src}[_target_col_{var}]
-model_{var} = LogisticRegression(C={C}, solver={solver!r}, max_iter={max_iter})
-model_{var}.fit(X_tr_{var}, y_tr_{var})
-""",
-    "metrics": """\
-# --- Node {id}: Metrics ---
-from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
-import numpy as np
-_target_col_{var} = 'target' if 'target' in df_test_{src_test}.columns else df_test_{src_test}.columns[-1]
-X_te_{var} = df_test_{src_test}.drop(columns=[_target_col_{var}])
-y_te_{var} = df_test_{src_test}[_target_col_{var}]
-y_pred_{var} = model_{src_model}.predict(X_te_{var})
-if {task!r} == 'regression':
-    metrics_{var} = {{'rmse': float(np.sqrt(mean_squared_error(y_te_{var}, y_pred_{var}))), 'r2': float(r2_score(y_te_{var}, y_pred_{var}))}}
-else:
-    metrics_{var} = {{'accuracy': float(accuracy_score(y_te_{var}, y_pred_{var})), 'f1': float(f1_score(y_te_{var}, y_pred_{var}, average={average!r}))}}
-print(metrics_{var})
-""",
-}
 
 
 def pipeline_to_python(spec: PipelineSpec) -> str:
@@ -119,25 +30,28 @@ def pipeline_to_python(spec: PipelineSpec) -> str:
         # Find upstream edges
         upstream = {e.target_port: e.source for e in spec.edges if e.target == node_id}
 
-        tmpl = _NODE_TEMPLATES.get(node.type)
-        if tmpl:
-            src = (upstream.get(0, "???")).replace("-", "_")
-            src_model = (upstream.get(0, "???")).replace("-", "_")
-            src_test = (upstream.get(1, "???")).replace("-", "_")
-            fmt_cfg = dict(cfg)
-            if node.type == "csv_loader":
-                # pandas rejects header=True/False; mirror the runtime handler (0 or None).
-                fmt_cfg["header"] = 0 if cfg.get("header", True) else None
-            try:
-                lines.append(tmpl.format(
-                    id=node_id, var=var, src=src,
-                    src_model=src_model, src_test=src_test,
-                    **fmt_cfg,
-                ))
-            except KeyError:
-                lines.append(f"# --- Node {node_id}: {node.type} (template error) ---\n")
-        else:
-            lines.append(f"# --- Node {node_id}: {node.type} (no template) ---\n")
+        meta = NODE_META.get(node.type)
+        if meta is None:
+            lines.append(f"# --- Node {node_id}: {node.type} (unknown node type) ---\n")
+            continue
+        if meta.code is None:
+            lines.append(f"# --- Node {node_id}: {meta.label} ---\n# {meta.export_note}\n")
+            continue
+        src = (upstream.get(0, "???")).replace("-", "_")
+        src_model = (upstream.get(0, "???")).replace("-", "_")
+        src_test = (upstream.get(1, "???")).replace("-", "_")
+        fmt_cfg = {**config_defaults(meta), **cfg}
+        if node.type == "csv_loader":
+            # pandas rejects header=True/False; mirror the runtime handler (0 or None).
+            fmt_cfg["header"] = 0 if fmt_cfg.get("header", True) else None
+        try:
+            lines.append(meta.code.format(
+                id=node_id, var=var, src=src,
+                src_model=src_model, src_test=src_test,
+                **fmt_cfg,
+            ))
+        except (KeyError, IndexError) as exc:
+            lines.append(f"# --- Node {node_id}: {meta.label} ---\n# Export failed: missing template value {exc}\n")
 
     return "\n".join(lines)
 

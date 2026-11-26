@@ -9,7 +9,7 @@ from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.artifacts import ModelPreview
 
@@ -84,7 +84,27 @@ def _fit_or_tune(
     return _fit_model(X_train, y_train, model_obj, ctx)
 
 
-@register("lin_reg")
+_CODE_LIN_REG = """\
+# --- Node {id}: Linear Regression ---
+from sklearn.linear_model import LinearRegression
+_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]
+X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])
+y_tr_{var} = df_train_{src}[_target_col_{var}]
+model_{var} = LinearRegression(fit_intercept={fit_intercept})
+model_{var}.fit(X_tr_{var}, y_tr_{var})
+"""
+
+
+@node(
+    "lin_reg", label="Linear Regression", category="model",
+    description="Ordinary least squares regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "fit_intercept": ui("Fit Intercept"),
+    },
+    code=_CODE_LIN_REG,
+)
 class LinRegHandler:
     class Config(BaseModel):
         fit_intercept: bool = True
@@ -97,7 +117,29 @@ class LinRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("log_reg")
+_CODE_LOG_REG = """\
+# --- Node {id}: Logistic Regression ---
+from sklearn.linear_model import LogisticRegression
+_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]
+X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])
+y_tr_{var} = df_train_{src}[_target_col_{var}]
+model_{var} = LogisticRegression(C={C}, solver={solver!r}, max_iter={max_iter})
+model_{var}.fit(X_tr_{var}, y_tr_{var})
+"""
+
+
+@node(
+    "log_reg", label="Logistic Regression", category="model",
+    description="Binary or multiclass classification",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "C": ui("C (Regularization)"),
+        "solver": ui(),
+        "max_iter": ui("Max Iterations"),
+    },
+    code=_CODE_LOG_REG,
+)
 class LogRegHandler:
     class Config(BaseModel):
         C: float = 1.0
@@ -116,12 +158,36 @@ class LogRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("rf")
+_CODE_RF = """\
+# --- Node {id}: Random Forest ---
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+_target_col_{var} = 'target' if 'target' in df_train_{src}.columns else df_train_{src}.columns[-1]
+X_tr_{var} = df_train_{src}.drop(columns=[_target_col_{var}])
+y_tr_{var} = df_train_{src}[_target_col_{var}]
+model_{var} = RandomForestClassifier(n_estimators={n_estimators}, max_depth={max_depth}, random_state={random_state})
+model_{var}.fit(X_tr_{var}, y_tr_{var})
+"""
+
+
+@node(
+    "rf", label="Random Forest", category="model",
+    description="Ensemble of decision trees",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "max_depth": ui("Max Depth"),
+        "max_features": ui("Max Features"),
+        "random_state": ui("Random Seed"),
+    },
+    code=_CODE_RF,
+)
 class RfHandler:
     class Config(BaseModel):
         n_estimators: int = 100
         max_depth: int = 10
-        max_features: str = "sqrt"
+        max_features: Literal["sqrt", "log2"] = "sqrt"
         random_state: int = 42
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -141,7 +207,18 @@ class RfHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("dtree")
+@node(
+    "dtree", label="Decision Tree", category="model",
+    description="Decision tree classifier/regressor",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "max_depth": ui("Max Depth"),
+        "min_samples_split": ui("Min Samples Split"),
+        "criterion": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class DtreeHandler:
     class Config(BaseModel):
         max_depth: int = 5
@@ -164,7 +241,19 @@ class DtreeHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("xgb")
+@node(
+    "xgb", label="XGBoost", category="model",
+    description="Gradient boosting — high performance",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "learning_rate": ui("Learning Rate"),
+        "max_depth": ui("Max Depth"),
+        "subsample": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class XgbHandler:
     class Config(BaseModel):
         n_estimators: int = 100
@@ -195,7 +284,18 @@ class XgbHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("svm")
+@node(
+    "svm", label="Support Vector Machine", category="model",
+    description="SVM for classification or regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "C": ui(),
+        "kernel": ui(),
+        "gamma": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class SvmHandler:
     class Config(BaseModel):
         C: float = 1.0
@@ -214,7 +314,18 @@ class SvmHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("knn")
+@node(
+    "knn", label="KNN", category="model",
+    description="K-Nearest Neighbors",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_neighbors": ui("Neighbors"),
+        "metric": ui(),
+        "weights": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class KnnHandler:
     class Config(BaseModel):
         n_neighbors: int = 5
@@ -237,7 +348,17 @@ class KnnHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("nb")
+@node(
+    "nb", label="Naive Bayes", category="model",
+    description="Probabilistic classifier",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "variant": ui(),
+        "var_smoothing": ui("Var Smoothing"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class NbHandler:
     class Config(BaseModel):
         variant: Literal["GaussianNB", "MultinomialNB", "BernoulliNB"] = "GaussianNB"
@@ -257,7 +378,20 @@ class NbHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("mlp")
+@node(
+    "mlp", label="Neural Network (MLP)", category="model",
+    description="Multilayer perceptron",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "layers": ui("Hidden Layers"),
+        "activation": ui(),
+        "lr": ui("Learning Rate"),
+        "epochs": ui(),
+        "batch_size": ui("Batch Size"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class MlpHandler:
     class Config(BaseModel):
         layers: str = "128, 64, 32"
@@ -289,7 +423,17 @@ class MlpHandler:
 
 # ── REGRESSION MODELS ─────────────────────────────────────────────────────────
 
-@register("ridge")
+@node(
+    "ridge", label="Ridge Regression", category="model",
+    description="L2-regularized linear regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "alpha": ui("Alpha (Regularization)"),
+        "fit_intercept": ui("Fit Intercept"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class RidgeHandler:
     class Config(BaseModel):
         alpha: float = 1.0
@@ -307,7 +451,17 @@ class RidgeHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("lasso")
+@node(
+    "lasso", label="Lasso Regression", category="model",
+    description="L1-regularized regression — performs feature selection",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "alpha": ui("Alpha (Regularization)"),
+        "max_iter": ui("Max Iterations"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class LassoHandler:
     class Config(BaseModel):
         alpha: float = 1.0
@@ -325,12 +479,24 @@ class LassoHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("rf_reg")
+@node(
+    "rf_reg", label="Random Forest Regressor", category="model",
+    description="Ensemble of decision trees for regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "max_depth": ui("Max Depth"),
+        "max_features": ui("Max Features"),
+        "random_state": ui("Random Seed"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class RfRegHandler:
     class Config(BaseModel):
         n_estimators: int = 100
         max_depth: int = 10
-        max_features: str = "sqrt"
+        max_features: Literal["sqrt", "log2"] = "sqrt"
         random_state: int = 42
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -350,7 +516,19 @@ class RfRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("xgb_reg")
+@node(
+    "xgb_reg", label="XGBoost Regressor", category="model",
+    description="Gradient boosting for regression — high performance",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "learning_rate": ui("Learning Rate"),
+        "max_depth": ui("Max Depth"),
+        "subsample": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class XgbRegHandler:
     class Config(BaseModel):
         n_estimators: int = 100
@@ -380,7 +558,18 @@ class XgbRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("dtree_reg")
+@node(
+    "dtree_reg", label="Decision Tree Regressor", category="model",
+    description="Decision tree for regression tasks",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "max_depth": ui("Max Depth"),
+        "min_samples_split": ui("Min Samples Split"),
+        "criterion": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class DtreeRegHandler:
     class Config(BaseModel):
         max_depth: int = 5
@@ -403,7 +592,19 @@ class DtreeRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("svr")
+@node(
+    "svr", label="Support Vector Regressor", category="model",
+    description="SVR for regression tasks",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "C": ui(),
+        "kernel": ui(),
+        "epsilon": ui(),
+        "gamma": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class SvrHandler:
     class Config(BaseModel):
         C: float = 1.0
@@ -423,7 +624,18 @@ class SvrHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("knn_reg")
+@node(
+    "knn_reg", label="KNN Regressor", category="model",
+    description="K-Nearest Neighbors for regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_neighbors": ui("Neighbors"),
+        "metric": ui(),
+        "weights": ui(),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class KnnRegHandler:
     class Config(BaseModel):
         n_neighbors: int = 5
@@ -446,7 +658,20 @@ class KnnRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("mlp_reg")
+@node(
+    "mlp_reg", label="Neural Network Regressor", category="model",
+    description="Multilayer perceptron for regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "layers": ui("Hidden Layers"),
+        "activation": ui(),
+        "lr": ui("Learning Rate"),
+        "epochs": ui(),
+        "batch_size": ui("Batch Size"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class MlpRegHandler:
     class Config(BaseModel):
         layers: str = "128, 64, 32"
@@ -476,7 +701,20 @@ class MlpRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("gb_reg")
+@node(
+    "gb_reg", label="Gradient Boosting Regressor", category="model",
+    description="Gradient boosting ensemble for regression (scikit-learn)",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("hp_config", "hpconfig")],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "learning_rate": ui("Learning Rate"),
+        "max_depth": ui("Max Depth"),
+        "subsample": ui(),
+        "random_state": ui("Random Seed"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class GbRegHandler:
     class Config(BaseModel):
         n_estimators: int = 100

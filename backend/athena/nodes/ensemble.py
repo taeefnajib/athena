@@ -3,7 +3,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.artifacts import ModelPreview
 
@@ -35,7 +35,17 @@ class _VotingEnsemble:
         return f"VotingEnsemble(models={names}, voting={self.voting})"
 
 
-@register("voting")
+@node(
+    "voting", label="Voting Classifier", category="ensemble",
+    description="Combine up to 5 models by voting — connect at least 2, unused inputs are ignored",
+    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model"), Port("model_4", "model"), Port("model_5", "model")],
+    outputs=[Port("model", "model")],
+    fields={
+        "voting": ui(),
+        "weights": ui("Weights (comma-sep, one per connected model)"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class VotingHandler:
     class Config(BaseModel):
         voting: Literal["hard", "soft"] = "soft"
@@ -96,7 +106,17 @@ class _StackingEnsemble:
         return f"StackingEnsemble(base={names}, meta={type(self.meta_model).__name__}, {status})"
 
 
-@register("stacking")
+@node(
+    "stacking", label="Stacking Ensemble", category="ensemble",
+    description="Stack up to 5 base models with a meta-learner — connect at least 2 models plus X_train and y_train to fit the meta-learner",
+    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model"), Port("model_4", "model"), Port("model_5", "model"), Port("X_train", "X_train"), Port("y_train", "y_train")],
+    outputs=[Port("model", "model")],
+    fields={
+        "meta": ui("Meta Learner"),
+        "cv": ui("CV Folds"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class StackingHandler:
     class Config(BaseModel):
         meta: Literal["LogisticRegression", "LinearRegression"] = "LogisticRegression"
@@ -132,12 +152,21 @@ class StackingHandler:
         return HandlerResult(outputs=[ensemble], preview=ModelPreview(summary=repr(ensemble)))
 
 
-def _stub(type_name: str):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(f"{type_name} is not yet implemented in v1.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
+@node(
+    "blending", label="Blending Node", category="ensemble",
+    description="Blend predictions from up to 5 models — connect at least 2, unused inputs are ignored",
+    inputs=[Port("model_1", "model"), Port("model_2", "model"), Port("model_3", "model"), Port("model_4", "model"), Port("model_5", "model")],
+    outputs=[Port("model", "model")],
+    fields={
+        "method": ui(widget="select", options=["mean", "weighted_mean", "rank_avg"]),
+    },
+    export_note="Not implemented yet.",
+    available=False, unavailable_reason="Not implemented yet (roadmap phase 1).",
+)
+class BlendingHandler:
+    class Config(BaseModel):
+        method: str = 'mean'
 
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        raise NotImplementedError("Not implemented yet (roadmap phase 1).")
 
-_stub("blending")

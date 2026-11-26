@@ -3,13 +3,39 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
-from athena.core.registry import register
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.plotting import fig_to_plot_preview
 from athena.schemas.artifacts import MetricsPreview, TextPreview, DataframeInfoPreview, ColumnInfo
 
 
-@register("metrics")
+_CODE_METRICS = """\
+# --- Node {id}: Metrics ---
+from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
+import numpy as np
+_target_col_{var} = 'target' if 'target' in df_test_{src_test}.columns else df_test_{src_test}.columns[-1]
+X_te_{var} = df_test_{src_test}.drop(columns=[_target_col_{var}])
+y_te_{var} = df_test_{src_test}[_target_col_{var}]
+y_pred_{var} = model_{src_model}.predict(X_te_{var})
+if {task!r} == 'regression':
+    metrics_{var} = {{'rmse': float(np.sqrt(mean_squared_error(y_te_{var}, y_pred_{var}))), 'r2': float(r2_score(y_te_{var}, y_pred_{var}))}}
+else:
+    metrics_{var} = {{'accuracy': float(accuracy_score(y_te_{var}, y_pred_{var})), 'f1': float(f1_score(y_te_{var}, y_pred_{var}, average={average!r}))}}
+print(metrics_{var})
+"""
+
+
+@node(
+    "metrics", label="Metrics Node", category="eval",
+    description="Compute classification or regression metrics",
+    inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    outputs=[Port("report", "report")],
+    fields={
+        "task": ui(),
+        "average": ui(),
+    },
+    code=_CODE_METRICS,
+)
 class MetricsHandler:
     class Config(BaseModel):
         task: Literal["classification", "regression"] = "classification"
@@ -56,7 +82,17 @@ class MetricsHandler:
         )
 
 
-@register("conf_matrix")
+@node(
+    "conf_matrix", label="Confusion Matrix", category="eval",
+    description="Visualize prediction confusion matrix",
+    inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    outputs=[Port("plot", "plot")],
+    fields={
+        "normalize": ui(),
+        "cmap": ui("Colormap"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ConfMatrixHandler:
     class Config(BaseModel):
         normalize: Literal["true", "pred", "all", "none"] = "none"
@@ -86,7 +122,13 @@ class ConfMatrixHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("residual")
+@node(
+    "residual", label="Residual Analysis", category="eval",
+    description="Analyze regression residuals",
+    inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    outputs=[Port("plot", "plot")],
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ResidualHandler:
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
         model = ctx.inputs[0]
@@ -114,7 +156,16 @@ class ResidualHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("roc_curve")
+@node(
+    "roc_curve", label="ROC Curve", category="eval",
+    description="Plot ROC-AUC curve",
+    inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    outputs=[Port("plot", "plot")],
+    fields={
+        "multi_class": ui("Multi-class Strategy"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class RocCurveHandler:
     class Config(BaseModel):
         multi_class: Literal["ovr", "ovo"] = "ovr"
@@ -160,7 +211,16 @@ class RocCurveHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("feat_imp_viz")
+@node(
+    "feat_imp_viz", label="Feature Importance Viz", category="eval",
+    description="Visualize feature importances",
+    inputs=[Port("model", "model")],
+    outputs=[Port("plot", "plot")],
+    fields={
+        "top_n": ui("Top N Features"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class FeatImpVizHandler:
     class Config(BaseModel):
         top_n: int = 20
@@ -194,7 +254,16 @@ class FeatImpVizHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("df_info")
+@node(
+    "df_info", label="DataFrame Info", category="eval",
+    description="Inspect shape, types, missing values, duplicates, and per-column statistics",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "max_unique": ui("Max Unique Values to Show", min=1),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class DfInfoHandler:
     class Config(BaseModel):
         max_unique: int = 10
@@ -253,7 +322,23 @@ class DfInfoHandler:
         )
 
 
-@register("data_viz")
+@node(
+    "data_viz", label="Data Visualizer", category="eval",
+    description="Plot dataset columns with bar, histogram, line, scatter, pie, box, violin, or heatmap charts",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("plot", "plot")],
+    fields={
+        "chart_type": ui("Chart Type"),
+        "x_col": ui("X Column"),
+        "y_col": ui("Y Column"),
+        "col": ui("Column (Histogram / Pie)"),
+        "hue": ui("Hue Column (optional)"),
+        "bins": ui("Bins (Histogram)", min=5),
+        "title": ui("Title (optional)"),
+        "palette": ui(widget="select", options=["viridis", "coolwarm", "plasma", "Set2", "husl", "tab10"]),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class DataVizHandler:
     class Config(BaseModel):
         chart_type: Literal["Histogram", "Bar", "Line", "Scatter", "Pie", "Box", "Violin", "Heatmap"] = "Histogram"
@@ -411,7 +496,21 @@ class DataVizHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("corr_check")
+@node(
+    "corr_check", label="Correlation Check", category="eval",
+    description="Visualize feature correlation matrix or pairwise scatter between two columns",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("plot", "plot")],
+    fields={
+        "mode": ui(),
+        "method": ui(),
+        "col1": ui("Column 1 (Pairwise)"),
+        "col2": ui("Column 2 (Pairwise)"),
+        "top_n": ui("Top N Features (Matrix)", min=2),
+        "cmap": ui("Colormap"),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class CorrCheckHandler:
     class Config(BaseModel):
         mode: Literal["Matrix", "Pairwise"] = "Matrix"
@@ -482,7 +581,18 @@ class CorrCheckHandler:
         return HandlerResult(outputs=[preview], preview=preview)
 
 
-@register("class_dist")
+@node(
+    "class_dist", label="Class Distribution", category="eval",
+    description="Check class balance in the target column",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("plot", "plot")],
+    fields={
+        "target_col": ui("Target Column (blank = auto)"),
+        "show_percent": ui("Show Percentages"),
+        "palette": ui(widget="select", options=["viridis", "Set2", "husl", "tab10", "pastel"]),
+    },
+    export_note="Not exportable yet: no code template for this node.",
+)
 class ClassDistHandler:
     class Config(BaseModel):
         target_col: str = ""
