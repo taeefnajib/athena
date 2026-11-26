@@ -138,7 +138,8 @@ async def execute(
             "spec": spec.model_dump_json(), "run_id": run_id,
             "start_from": start_from, "data_dir": str(settings.data_dir),
         })
-        await _supervise(worker, run_id, event_broker, log)
+        timeouts = {n.id: n.timeout_s or settings.node_timeout_s for n in spec.nodes}
+        await _supervise(worker, run_id, event_broker, log, timeouts)
     finally:
         _stop(worker)
         _active_run_id = None
@@ -147,7 +148,7 @@ async def execute(
             pool.prewarm()
 
 
-async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: Any) -> None:
+async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: Any, timeouts: dict[str, int]) -> None:
     current: str | None = None          # node in flight
     node_started = 0.0
     cancel_asked: float | None = None
@@ -198,9 +199,10 @@ async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: An
             log.warning("cancel_kill", node_id=current)
             await abort("Cancelled: the node was stopped because it didn't finish after Stop.", "cancelled")
             return
-        if current is not None and now - node_started > settings.node_timeout_s:
-            log.warning("node_timeout", node_id=current, timeout_s=settings.node_timeout_s)
-            await abort(f"Timed out after {settings.node_timeout_s} s (ATHENA_NODE_TIMEOUT_S).", "error")
+        limit = timeouts.get(current, settings.node_timeout_s) if current is not None else None
+        if limit is not None and now - node_started > limit:
+            log.warning("node_timeout", node_id=current, timeout_s=limit)
+            await abort(f"Timed out after {limit} s (the node's timeout, or ATHENA_NODE_TIMEOUT_S).", "error")
             return
         if not w.process.is_alive() and not _pending(w):
             code = w.process.exitcode

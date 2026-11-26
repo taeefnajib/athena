@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { usePipelineStore } from '../../store/pipelineStore'
 import { useExecutionStore } from '../../store/executionStore'
 import { useUiStore } from '../../store/uiStore'
+import { useConnectionStore } from '../../store/connectionStore'
 import { NODE_REGISTRY, CATEGORY_META, type NodeSpec, type ConfigField } from '../../registry/nodeRegistry'
 import { api } from '../../lib/api'
+import { ExecutionPolicy } from './ExecutionPolicy'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
 type HpParam = { key: string; values: string }
@@ -88,6 +90,7 @@ function Inspector({ nodeId, nodeType, config }: { nodeId: string; nodeType: str
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {inspectorTab === 'settings' && <SettingsTab spec={spec} config={config} nodeId={nodeId} onChange={updateConfig} />}
+        {inspectorTab === 'settings' && <ExecutionPolicy nodeId={nodeId} />}
         {inspectorTab === 'preview'  && <PreviewTab preview={preview} />}
         {inspectorTab === 'logs'     && <LogsTab logs={logs} />}
         {inspectorTab === 'metrics'  && <MetricsTab metrics={metrics} />}
@@ -148,9 +151,34 @@ function SettingsTab({ spec, config, nodeId, onChange }: { spec: NodeSpec; confi
                 onChange={update}
               />
             )}
+            {field.type === 'password' && <input style={inputBase} type="password" autoComplete="new-password" value={String(val)} onChange={e => update(e.target.value)} />}
+            {field.type === 'connection' && <ConnectionField value={String(val)} connector={field.connector} onChange={update} />}
+            {field.help && <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5 }}>{field.help}</div>}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function ConnectionField({ value, connector, onChange }: { value: string; connector?: string; onChange: (v: string) => void }) {
+  const { connections, loaded, load } = useConnectionStore()
+  const setShowConnectionsModal = useUiStore(s => s.setShowConnectionsModal)
+  useEffect(() => { if (!loaded) load().catch(() => { /* the modal reports load errors */ }) }, [loaded, load])
+  const choices = connections.filter(c => !connector || c.type === connector)
+  const missing = value !== '' && loaded && !choices.some(c => c.name === value)
+  const style: React.CSSProperties = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '6px 10px', outline: 'none', fontFamily: 'var(--font)', flex: 1, minWidth: 0, cursor: 'pointer' }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select style={style} value={value} onChange={e => onChange(e.target.value)}>
+          <option value="">{choices.length ? 'Choose a connection…' : 'No connections yet'}</option>
+          {choices.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+          {missing && <option value={value}>{value} (not on this machine)</option>}
+        </select>
+        <button type="button" onClick={() => setShowConnectionsModal(true)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', cursor: 'pointer', fontSize: 11, flexShrink: 0 }}>Manage…</button>
+      </div>
+      {missing && <div style={{ fontSize: 10, color: 'var(--warning)' }}>This pipeline uses a connection named "{value}" that isn't saved here. Create it under Connections.</div>}
     </div>
   )
 }

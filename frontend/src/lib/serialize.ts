@@ -1,4 +1,4 @@
-import type { PipelineSpec, NodeStatus } from '../types/pipeline'
+import { pickPolicy, type PipelineSpec, type NodeStatus } from '../types/pipeline'
 import type { PipelineNode, PipelineEdge } from '../store/pipelineStore'
 
 export function fromPipelineSpec(spec: PipelineSpec): { nodes: PipelineNode[]; edges: PipelineEdge[] } {
@@ -9,6 +9,7 @@ export function fromPipelineSpec(spec: PipelineSpec): { nodes: PipelineNode[]; e
       position: n.position ?? { x: 0, y: 0 },
       config: n.config ?? {},
       status: 'idle' as NodeStatus,
+      policy: pickPolicy(n),
     })),
     edges: (spec.edges ?? []).map(e => ({
       id: e.id,

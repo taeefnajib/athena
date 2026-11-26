@@ -133,6 +133,23 @@ npm run dev
 5. **Export code** — click **Export Code** in the top bar to download a standalone Python script, Jupyter notebook, or pipeline JSON.
 6. **Save / Load** — click **Save** (or `Ctrl/⌘ + S`) and enter a file path. Load pipelines via `POST /api/pipelines/load` or by adding a load button (coming in v1.1).
 
+### Connections (databases)
+
+Click **Connections** in the top bar to save a database connection (PostgreSQL, MySQL/MariaDB, SQLite, DuckDB, SQL Server, or any SQLAlchemy URL), then use the **SQL Query** node to pull data from it.
+
+- **Test connection** checks the settings before you save.
+- Passwords are stored in your OS keychain (Windows Credential Manager, macOS Keychain, Secret Service), never in `.athena` files or exported code. You can also enter `env://VAR_NAME` to read a secret from an environment variable.
+- Pipelines refer to connections by name, so you can share a pipeline without sharing credentials.
+- SQLite works out of the box. Other databases need their driver: `uv pip install -e ".[postgres]"` (or `mysql`, `duckdb`, `mssql`) in `backend/`.
+
+### Execution settings
+
+Each node's inspector has an **Execution** section: a timeout, retries with backoff, and whether to reuse cached results. Every pipeline runs in a separate worker process, so a crashing or hung node can't take the app down, and **Stop** always works.
+
+### Plugins
+
+Nodes and connectors can come from separately installed Python packages. See [`docs/PLUGINS.md`](docs/PLUGINS.md); `GET /api/plugins` lists what's installed.
+
 ### Starter templates
 
 Click **Templates** in the top bar to load a pre-built pipeline. Each template's CSV Loader node points at a small synthetic dataset that ships in `backend/`, so every template runs successfully out of the box with no setup:

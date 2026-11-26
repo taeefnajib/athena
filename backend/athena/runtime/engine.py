@@ -20,6 +20,9 @@ from athena.schemas.pipeline import PipelineSpec
 
 Emit = Callable[[dict[str, Any]], None]
 
+LOCAL_RUNTIMES = ("python",)
+"""Runtimes the local worker can execute. Distributed ones (ray, k8s, …) arrive in roadmap phase 3."""
+
 _LEVELS = {"debug": "debug", "info": "info", "warning": "warn", "warn": "warn", "error": "error", "exception": "error"}
 
 
@@ -56,6 +59,8 @@ def run_spec(
     start_from: list[str] | None = None,
 ) -> str:
     """Run every node in topological order. Returns the final status (completed | error | cancelled)."""
+    from athena.plugins import load_plugins
+    load_plugins()  # idempotent; the worker has already done it
     base_log = structlog.get_logger().bind(run_id=run_id)
     cache = ArtifactCache(cache_dir)
     nodes_dicts = [{"id": n.id} for n in spec.nodes]
@@ -105,22 +110,34 @@ def run_spec(
             handler = get_handler(node.type)
         except KeyError:
             return fail(f"Unknown node type: {node.type!r}")
+        if node.runtime not in (None, *LOCAL_RUNTIMES):
+            return fail(f"Runtime {node.runtime!r} isn't available in local mode (available: {', '.join(LOCAL_RUNTIMES)})")
 
-        cached = cache.get(cache_key)
+        cached = cache.get(cache_key) if node.cache else None
         if cached is not None:
             result: HandlerResult = cached
         else:
+            node_log = NodeLogger(emit, node_id, base_log)
             ctx = ExecutionContext(
                 node_id=node_id, node_type=node.type, config=dict(node.config), inputs=inputs,
                 run_id=run_id, cache_dir=cache_dir,
-                logger=NodeLogger(emit, node_id, base_log),  # type: ignore[arg-type]
+                logger=node_log,  # type: ignore[arg-type]
                 _cancelled=cancelled,
             )
-            try:
-                result = handler(ctx)
-            except Exception as exc:  # a failing handler is a user-visible error, not a crash
-                return fail(str(exc) or type(exc).__name__, traceback.format_exc())
-            cache.set(cache_key, result)
+            attempts = node.retry.max_attempts if node.retry else 1
+            backoff = node.retry.backoff_s if node.retry else 0.0
+            for attempt in range(1, attempts + 1):
+                try:
+                    result = handler(ctx)
+                    break
+                except Exception as exc:  # a failing handler is a user-visible error, not a crash
+                    if attempt == attempts or cancelled():
+                        return fail(str(exc) or type(exc).__name__, traceback.format_exc())
+                    wait = backoff * 2 ** (attempt - 1)
+                    node_log.warning(f"Attempt {attempt} of {attempts} failed: {exc}. Retrying in {wait:g} s")
+                    time.sleep(wait)
+            if node.cache:
+                cache.set(cache_key, result)
 
         for i, art in enumerate(result.outputs):
             artifacts[(node_id, i)] = art

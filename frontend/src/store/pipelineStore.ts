@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { NODE_REGISTRY } from '../registry/nodeRegistry'
-import type { PipelineSpec, NodeStatus } from '../types/pipeline'
+import { pickPolicy, type NodePolicy, type PipelineSpec, type NodeStatus } from '../types/pipeline'
 
 export interface PipelineNode {
   id: string
@@ -8,6 +8,8 @@ export interface PipelineNode {
   position: { x: number; y: number }
   config: Record<string, unknown>
   status: NodeStatus
+  /** Execution policy (spec v2): timeout, retry, cache, runtime, resources. */
+  policy?: NodePolicy
 }
 
 export interface PipelineEdge {
@@ -107,6 +109,7 @@ interface PipelineState {
   addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => void
   removeNode: (id: string) => void
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void
+  updateNodePolicy: (id: string, policy: NodePolicy) => void
   moveNode: (id: string, position: { x: number; y: number }) => void
   addEdge: (edge: PipelineEdge) => void
   removeEdge: (id: string) => void
@@ -154,6 +157,10 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       const edges = s.edges.filter(e => e.source !== id && e.target !== id)
       return { nodes, edges, selectedNodeId: null, isDirty: true, ...pushHistory(s, nodes, edges) }
     })
+  },
+
+  updateNodePolicy: (id, policy) => {
+    set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, policy: pickPolicy(policy) } : n), isDirty: true }))
   },
 
   updateNodeConfig: (id, config) => {
@@ -230,9 +237,9 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   toPipelineSpec: () => {
     const { nodes, edges } = get()
     return {
-      version: 1,
+      version: 2,
       name: 'untitled',
-      nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config })),
+      nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config, ...pickPolicy(n.policy ?? {}) })),
       edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, source_port: e.sourcePort, target_port: e.targetPort })),
     }
   },

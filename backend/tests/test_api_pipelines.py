@@ -100,7 +100,7 @@ def test_export_json():
     resp = client.post("/api/pipelines/export", json={"spec": _simple_spec(), "format": "json"})
     assert resp.status_code == 200
     data = json.loads(resp.content)
-    assert data["version"] == 1
+    assert data["version"] == 2  # v1 input is upgraded to spec v2
 
 
 def test_autosave_roundtrip():

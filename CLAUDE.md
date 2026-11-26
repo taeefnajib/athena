@@ -121,14 +121,20 @@ This is what the frontend sends to `POST /api/pipelines/run` and what's saved as
   "nodes": [
     {
       "id": "n1",                   // stable id assigned client-side
-      "type": "csv_loader",         // must exist in NODE_REGISTRY (both sides)
+      "type": "csv_loader",         // must be a registered node type (GET /api/nodes)
       "position": { "x": 60, "y": 80 },  // for canvas only — backend ignores
       "config": {                   // shape determined by node type
         "path": "data.csv",
         "sep": ",",
         "header": true,
         "encoding": "utf-8"
-      }
+      },
+      // v2, all optional: execution policy
+      "timeout_s": 120,             // overrides ATHENA_NODE_TIMEOUT_S
+      "retry": { "max_attempts": 3, "backoff_s": 2 },
+      "cache": true,                // false = always re-run (live data)
+      "runtime": null,              // only "python" (local worker) today
+      "resources": { "cpu": 2, "memory_gb": 4, "gpu": 0 }   // advisory locally
     }
   ],
   "edges": [
@@ -142,6 +148,8 @@ This is what the frontend sends to `POST /api/pipelines/run` and what's saved as
   ]
 }
 ```
+
+`version` is 2 (spec v2). The backend accepts v1 files (a strict subset) and upgrades them; the frontend keeps the v2 node fields through load and save (`pickPolicy` in `types/pipeline.ts`). Nodes reference external systems only by **connection name** (`"connection": "warehouse"`); credentials never appear in a spec.
 
 The backend must accept this verbatim. The frontend must produce nothing else. Schema drift between sides is the #1 thing to avoid — every change to a node's `config` shape is a breaking change to both halves.
 

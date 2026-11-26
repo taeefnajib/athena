@@ -76,7 +76,7 @@ def test_json_roundtrip():
     json_str = pipeline_to_json(spec)
     import json
     data = json.loads(json_str)
-    assert data["version"] == 1
+    assert data["version"] == 2  # v1 input is upgraded to spec v2
     assert len(data["nodes"]) == 6
     assert len(data["edges"]) == 6
     assert data["name"] == "classification"

@@ -268,7 +268,7 @@ If a client connects after the run has already finished, send the buffered final
 
 ## 7. The node registry
 
-`@node` (in `athena/sdk/node.py`) registers into `core/registry.py`: `NODE_REGISTRY` (type → handler instance), `NODE_META` (type → `NodeMeta`) and `CATEGORIES`. Built-in nodes register when `athena.nodes` is imported; plugins will register through the `athena.nodes` entry point (roadmap 0.5). A plugin that introduces a category calls `register_category()` first.
+`@node` (in `athena/sdk/node.py`) registers into `core/registry.py`: `NODE_REGISTRY` (type → handler instance), `NODE_META` (type → `NodeMeta`) and `CATEGORIES`. Built-in nodes register when `athena.nodes` is imported; plugins register through the `athena.nodes` entry point (see Plugins below). A plugin that introduces a category calls `register_category()` first.
 
 `GET /api/nodes` serves `node_spec()` for every node plus the categories. **The frontend builds its library and inspector forms from this response**; it has no node definitions of its own.
 
@@ -277,7 +277,19 @@ Rules:
 - `available=False, unavailable_reason=...` hides a not-yet-implemented node from the library while keeping old pipelines loadable. Prefer not adding stubs at all.
 - `tests/test_node_specs.py` checks every node: UI hints match `Config`, select defaults are among the options, ports are unique, and export templates fill from defaults.
 
-`custom_code` executes user-supplied Python. It must move to the worker process with the rest of execution (roadmap 0.4); until then it `exec`s in a restricted namespace inside the API process, which is the main reason for 0.4.
+`custom_code` executes user-supplied Python. It runs in the worker like every handler, and is refused when `ATHENA_ALLOW_CUSTOM_CODE=false`.
+
+### Plugins
+
+`athena/plugins.py: load_plugins()` imports the built-ins (`athena.nodes`, `athena.connectors`) and every package declaring the `athena.nodes` / `athena.connectors` entry points. It runs once per process: in the API server (at import of `main`, `api/nodes`, `codegen`) and in each worker. A plugin that fails to import is recorded (`GET /api/plugins`) and skipped. The authoring guide is `docs/PLUGINS.md`.
+
+### Connectors and connections
+
+- **Connector** (`athena/sdk/connector.py`, `@connector`): a type of external system. It declares a Pydantic `Config` (`SecretStr` fields are secrets) and implements `test`, `list` and `read`. Built-in: `sql` (`connectors/sql.py`, SQLAlchemy; DB drivers are optional extras `postgres`, `mysql`, `duckdb`, `mssql`).
+- **Connection** (`connectors/store.py`): a user's saved, named configuration in `<data_dir>/connections.json`. Secret fields hold only a marker there; the values live in the OS keychain (`connectors/secrets.py`, `keyring`) or are `env://VAR` references resolved at use time.
+- Nodes take a connection by **name** (`ui(widget="connection", connector="sql")`) and resolve it in the worker with `resolve_connection(name)`. Never put credentials in node config, specs, logs, previews or exported code; exports read them from environment variables.
+- API: `GET /api/connectors`, `GET/PUT /api/connections`, `GET/DELETE /api/connections/{name}`, `POST /api/connections/test`, `GET /api/connections/{name}/resources`. Secrets are write-only: responses say only whether one is set (and show `env://` references).
+- Tests use `secrets.set_store(MemoryStore())`; never touch the real keychain in tests.
 
 ---
 
