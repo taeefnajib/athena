@@ -126,22 +126,27 @@ class NodeHandler(Protocol):
     def __call__(self, ctx: ExecutionContext) -> HandlerResult: ...
 ```
 
-A handler is a plain callable (often a class for stateful nodes, often a function). Registration is via decorator:
+A handler is a callable class defined once with the node SDK (`athena.sdk`). The `@node` decorator holds everything the frontend needs (label, category, ports, form hints, export template), so there is no second registry:
 
 ```python
 # nodes/quality.py
-@register("imputer")
-class ImputerHandler:
-    inputs  = [PortSpec("dataset", "dataset")]
-    outputs = [PortSpec("dataset", "dataset")]
+from athena.sdk import Port, node, ui
 
-    class config_schema(BaseModel):
+@node(
+    "imputer", label="Missing Value Imputer", category="quality",
+    description="Fill missing values",
+    inputs=[Port("dataset", "dataset")], outputs=[Port("dataset", "dataset")],
+    fields={"strategy": ui("Strategy"), "fill_value": ui("Fill Value")},   # labels/widgets; options come from Literal
+    code=_CODE_IMPUTER,                    # export template, or export_note="why it can't be exported"
+)
+class ImputerHandler:
+    class Config(BaseModel):
         strategy: Literal["mean", "median", "mode", "constant", "knn"] = "mean"
         fill_value: str = "0"
         cols: str = ""
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-        cfg = self.config_schema(**ctx.config)
+        cfg = self.Config(**ctx.config)
         df: pd.DataFrame = ctx.inputs[0]
         # ... real sklearn logic ...
         return HandlerResult(
@@ -256,38 +261,16 @@ If a client connects after the run has already finished, send the buffered final
 
 ## 7. The node registry
 
-Centralized in `core/registry.py`. Self-registration via decorator + module-level imports in `nodes/__init__.py`:
+`@node` (in `athena/sdk/node.py`) registers into `core/registry.py`: `NODE_REGISTRY` (type → handler instance), `NODE_META` (type → `NodeMeta`) and `CATEGORIES`. Built-in nodes register when `athena.nodes` is imported; plugins will register through the `athena.nodes` entry point (roadmap 0.5). A plugin that introduces a category calls `register_category()` first.
 
-```python
-# core/registry.py
-NODE_REGISTRY: dict[str, type[NodeHandler]] = {}
+`GET /api/nodes` serves `node_spec()` for every node plus the categories. **The frontend builds its library and inspector forms from this response**; it has no node definitions of its own.
 
-def register(node_type: str):
-    def deco(cls):
-        if node_type in NODE_REGISTRY:
-            raise ValueError(f"Duplicate node type: {node_type}")
-        NODE_REGISTRY[node_type] = cls
-        return cls
-    return deco
-```
+Rules:
+- Labels, widgets and options: put them in `fields={...: ui(...)}`. Prefer `Literal[...]` types so options come from the type and validation matches the form.
+- `available=False, unavailable_reason=...` hides a not-yet-implemented node from the library while keeping old pipelines loadable. Prefer not adding stubs at all.
+- `tests/test_node_specs.py` checks every node: UI hints match `Config`, select defaults are among the options, ports are unique, and export templates fill from defaults.
 
-The `GET /api/nodes` endpoint exposes the registry as JSON for the frontend (and humans debugging) — **but the frontend's source of truth is its own `nodeRegistry.ts`**. The endpoint is for verification, not for runtime introspection. They must agree; keep them in lockstep on every change.
-
-### v1 must-have nodes (build these first, in this order)
-
-1. `csv_loader`, `synth_data`
-2. `imputer`, `dup_remover`, `scaler`, `ohe`, `label_enc`
-3. `train_test`
-4. `lin_reg`, `log_reg`, `rf`
-5. `metrics`, `conf_matrix`, `residual`
-6. `csv_export`, `model_saver`
-
-These are enough to validate the architecture end-to-end. Then:
-
-- v1.1: `feat_gen`, `pca`, `tfidf`, `cv_split`, `xgb`, `dtree`, `knn`, `svm`, `nb`, `mlp`, `roc_curve`, `feat_imp_viz`, `predict`, `report_gen`
-- v1.2: `excel_loader`, `json_loader`, `db_connector`, `api_fetch`, `data_merge`, `data_sample`, `outlier`, `type_conv`, `validator`, `embedding`, `date_feat`, `feat_imp_sel`, `smote`, `undersample`, `oversample`, `class_weight`, `train_val_test`, `voting`, `stacking`, `blending`, `automl`, `hp_tuner`, `pipeline_wrap`, `shap`, `lime`, `debugger`, `api_gen`, `drift_detect`, `perf_tracker`, `custom_code`
-
-`custom_code` is **last** for a reason — it executes user-supplied Python. For a local-only app this is acceptable (the user is the attacker and the victim), but document the risk in the UI tooltip and don't run it in subprocess sandboxing for v1; just `exec` in a restricted namespace. Revisit if Athena ever ships hosted.
+`custom_code` executes user-supplied Python. It must move to the worker process with the rest of execution (roadmap 0.4); until then it `exec`s in a restricted namespace inside the API process, which is the main reason for 0.4.
 
 ---
 

@@ -1,6 +1,6 @@
-# Athena — Local No-Code AutoML Platform
+# Athena — Open-Source Visual ML Engineering Platform
 
-> A graph-based, locally-run machine learning workflow builder. Users design ML pipelines visually (Figma-meets-Notion-meets-data-science-IDE), and Athena executes them with real Python ML libraries underneath.
+> A graph-based machine learning workflow platform. Users design ML pipelines visually (Figma-meets-Notion-meets-data-science-IDE), and Athena executes them with real Python ML libraries underneath. It is growing from a local AutoML prototype into an open alternative to SageMaker Canvas that covers the full lifecycle. **`docs/ROADMAP.md` is the plan of record: read it before starting feature work.**
 
 This is the **root `CLAUDE.md`**. It defines the product, the architecture, and the contract between frontend and backend. Two sub-`CLAUDE.md` files contain the implementation rules for each side:
 
@@ -19,8 +19,8 @@ The user opens `http://localhost:5173` in a browser. The UI feels like a design 
 
 Core principles:
 
-1. **Local-first.** No cloud, no auth, no telemetry. Everything runs on the user's machine. File paths in nodes refer to the user's local filesystem.
-2. **Transparent.** Every visual node maps to a real, readable Python function. The exported script must be code a data scientist would actually write.
+1. **Local-first.** `pip install athena && athena` works on a laptop with no infrastructure, no account and no telemetry. Athena may connect *out* to services the user configures (MLflow, databases, warehouses, Kubernetes, model APIs) using the user's own credentials, but it never requires one. A multi-user server mode is a later roadmap phase that is additive: never break the single-user local path.
+2. **Transparent.** Every visual node maps to a real, readable Python function. The exported script must be code a data scientist would actually write. Visual-first, not visual-only: config, generated code, runtime and logs are always inspectable.
 3. **Honest about state.** A node is `idle`, `running`, `success`, or `error` — these reflect **actual backend execution**, not animations. No fake spinners.
 4. **DAG-correct.** Pipelines are directed acyclic graphs. Cycles are rejected before execution. Topological order is computed once per run.
 5. **Resumable & cacheable.** Re-running a pipeline reuses cached outputs of unchanged upstream nodes. Editing a node invalidates its descendants only.
@@ -145,21 +145,19 @@ This is what the frontend sends to `POST /api/pipelines/run` and what's saved as
 
 The backend must accept this verbatim. The frontend must produce nothing else. Schema drift between sides is the #1 thing to avoid — every change to a node's `config` shape is a breaking change to both halves.
 
-### 4.2 Node definitions live in **two** synchronized registries
+### 4.2 Node definitions have **one** source: the backend node SDK
 
-- `frontend/src/registry/nodeRegistry.ts` — provides UI metadata (label, icon, category color, config field types for the inspector form, port labels)
-- `backend/athena/core/registry.py` — provides the **handler function** plus the canonical input/output port types
+A node is defined once, in Python, with `@node(...)` from `athena.sdk` (see `backend/CLAUDE.md` §4): type, label, category, description, ordered typed `inputs`/`outputs`, a Pydantic `Config` (defaults, `Literal` options and `Field(title=...)` labels drive the form), UI hints for special widgets, the handler, and an export template (or `exportable=False` with a reason).
 
-Both must agree on:
-- node `type` string (the key)
-- number and order of `inputs` and `outputs`
-- the set of `config` field names and their types
+`GET /api/nodes` serves the full spec. The frontend loads it at startup into `frontend/src/registry/nodeRegistry.ts`, which is a **loader and type definitions only** — never hand-add node entries there. Presentation-only metadata (category colours and icons) stays in the frontend, with a fallback for categories that plugins introduce.
 
-When adding a new node type, the workflow is:
-1. Add the entry to **both** registries in the same change.
-2. Add a backend handler in `backend/athena/nodes/<category>.py`.
-3. Add a frontend custom-node component in `frontend/src/nodes/` if it needs special rendering (most nodes don't — they reuse the generic `BaseNode`).
-4. Add a test that runs a minimal pipeline using the new node.
+When adding a new node type:
+1. Define it with `@node` in `backend/athena/nodes/<category>.py`, or in a plugin package (entry point `athena.nodes`).
+2. Supply its export code template, or set `exportable=False` with a reason.
+3. Add a handler test with a fixture dataframe, and a minimal pipeline test.
+4. Add a frontend custom-node component only if it needs special rendering (most nodes reuse `BaseNode`).
+
+`tests/test_node_specs.py` fails if any node's config, ports, UI hints or export declaration are inconsistent.
 
 ### 4.3 Run lifecycle
 
@@ -234,7 +232,9 @@ Code generation lives in `backend/athena/core/codegen.py`. It is a pure function
 
 ---
 
-## 8. Tech stack — non-negotiable
+## 8. Tech stack
+
+The core stack below is fixed. Integrations from `docs/ROADMAP.md` (MLflow, DuckDB, SQLAlchemy, dlt, LightGBM, CatBoost, Optuna, FLAML, BentoML, Evidently, Feast, Ray, `keyring`, …) are allowed when they arrive as a node, connector or runtime plugin with its dependencies declared as an optional extra (`pip install athena[mlflow]`). The base install must stay lean and work offline.
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -286,12 +286,12 @@ Do **not** introduce: Redux, MobX, plain Flask, Django, Streamlit, alternative g
 
 ## 11. What this product is *not*
 
-- Not a deep learning training platform. The MLP node is a scikit-learn `MLPClassifier`/`MLPRegressor`, not a Keras model. If users need GPU training, they should export the code and run it themselves.
-- Not a data warehouse. CSV/Excel/JSON/SQL loaders read up to ~1M rows comfortably; beyond that, the user needs a real ETL tool.
-- Not a collaboration tool. Single user, single machine.
-- Not a hosted product. There is no `athena.com`. The README explains how to install locally.
+- Not a hosted product. There is no `athena.com`, no Athena account and no Athena cloud. Every integration runs on infrastructure and credentials the user controls.
+- Not a reimplementation of mature MLOps tools. Orchestration, experiment tracking, serving, feature stores and data warehousing are integrated (MLflow, Dagster, BentoML, Feast, Snowflake, …), not rebuilt.
+- Not a place where user code runs in the API server. Handlers and custom code execute in worker processes (roadmap 0.4), never in the request-serving process.
+- Not multi-user yet. Team features (auth, RBAC, shared workspaces) belong to the server-mode phase and must not complicate the single-user local path before then.
 
-Keep these out of scope. Don't add team features, cloud sync, or "Athena Cloud" branding.
+Deep learning, distributed compute and cloud connectors are on the roadmap (phases 1–3); add them as plugins in roadmap order, not ad hoc.
 
 ---
 
@@ -300,10 +300,11 @@ Keep these out of scope. Don't add team features, cloud sync, or "Athena Cloud" 
 When taking on a task:
 
 1. **Read the relevant sub-`CLAUDE.md`** before changing any code. Frontend and backend each have their own conventions.
-2. **If a change touches the frontend↔backend contract (§4)**, update both sides in the same PR. Never let the registries drift.
-3. **Run the test suite** before declaring a task done — `pnpm test` and `uv run pytest`.
-4. **Don't add a node** without also adding: registry entries on both sides, a handler, a test, and an entry in the appropriate code-generation template.
-5. **Don't mock the backend in the frontend** beyond what's needed for unit tests. The dev server is the source of truth.
-6. **Surface decisions, don't bury them.** If the spec is ambiguous, pick the simpler interpretation and note it in the PR description.
+2. **If a change touches the frontend↔backend contract (§4)**, update both sides in the same PR. Node specs come from the backend; never re-introduce hand-written node entries in the frontend.
+3. **Run the test suite** before declaring a task done — `npm test` (frontend) and `uv run pytest` (backend).
+4. **Don't add a node** without: an `@node` definition, a handler test, and an export template or an explicit `exportable=False` reason.
+5. **Follow the roadmap order.** Check `docs/ROADMAP.md`; update its status when a deliverable lands.
+6. **Don't mock the backend in the frontend** beyond what's needed for unit tests. The dev server is the source of truth.
+7. **Surface decisions, don't bury them.** If the spec is ambiguous, pick the simpler interpretation and note it in the PR description.
 
 When in doubt: prefer fewer features done well over many features done shakily. Athena's appeal is that it **actually works** end-to-end — not that it has the most nodes.
