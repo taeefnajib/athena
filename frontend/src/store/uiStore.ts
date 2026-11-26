@@ -38,8 +38,11 @@ export const useUiStore = create<UiState>()(
       setShowLoadModal: (show) => set({ showLoadModal: show }),
       setInspectorTab: (tab) => set({ inspectorTab: tab }),
       showToast: (msg, type = 'info') => {
-        set({ toast: { msg, type } })
-        setTimeout(() => set({ toast: null }), type === 'error' ? 0 : 2800)
+        const toast = { msg, type }
+        set({ toast })
+        // Errors stay until clicked (frontend/CLAUDE.md §10); others fade after 2.8 s.
+        // Only clear this toast: a newer one must not be wiped by an older timer.
+        if (type !== 'error') setTimeout(() => set(s => (s.toast === toast ? { toast: null } : {})), 2800)
       },
       clearToast: () => set({ toast: null }),
     }),
