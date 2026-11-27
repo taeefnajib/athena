@@ -183,6 +183,15 @@ Install the extra once: `cd backend && uv sync --extra mlflow`. Then click **Tra
 - The **Register Model** node registers a trained model (with an optional alias such as `champion`); **Load Registered Model** brings one back into any pipeline, by alias or version.
 - To browse the local store in MLflow's own UI: `uv run mlflow ui --backend-store-uri sqlite:///$HOME/.athena/mlflow/mlflow.db`.
 
+### Calibration and decision thresholds
+
+For classifiers whose probabilities or cut-off matter (risk scores, fraud, churn):
+
+- **Probability Calibration** makes predicted probabilities match how often the class actually occurs (sigmoid, or isotonic for larger data). Check the result with **Calibration Curve** on the test set: a reliability diagram plus the Brier score and expected calibration error.
+- **Decision Threshold** picks the probability cut-off for a binary classifier: best F1 or balanced accuracy, the most recall at a minimum precision (or the reverse), or the lowest cost when a missed positive costs more than a false alarm. Its plot shows precision, recall and F1 at every threshold, and the report compares the chosen threshold with the default 0.5.
+
+Both tune on data the model wasn't fitted on: connect `X_val`/`y_val` from **Train/Val/Test Split**, or leave them empty to use k-fold cross-validation on the training set. Never tune on the test set; evaluate on it afterwards.
+
 ### AutoML
 
 Install the extra once: `cd backend && uv sync --extra automl` (FLAML with LightGBM and XGBoost; note that it pins XGBoost below 3.0). Then use the **AutoML Search** node, or load the **AutoML Classification** template.

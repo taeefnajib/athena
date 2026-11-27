@@ -73,6 +73,8 @@ HELPERS: dict[str, object] = {
     "_athena_tune": ATHENA_TUNE,
     "_VotingEnsemble": lambda: _class_source("athena.nodes.ensemble._VotingEnsemble"),
     "_StackingEnsemble": lambda: _class_source("athena.nodes.ensemble._StackingEnsemble"),
+    "_athena_tuning_scores": lambda: _class_source("athena.nodes.calibration._athena_tuning_scores"),
+    "_athena_threshold": lambda: _class_source("athena.nodes.calibration._athena_threshold"),
 }
 HELPER_IMPORTS = {"_VotingEnsemble": ["import numpy as np", "import pandas as pd"],
                   "_StackingEnsemble": ["import numpy as np", "import pandas as pd"]}
