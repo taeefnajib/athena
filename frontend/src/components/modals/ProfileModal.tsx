@@ -37,14 +37,15 @@ export function ProfileModal() {
   const chartTip = useTooltip()
   const close = () => setProfileTarget(null)
 
+  const nodeId = node?.id
   useEffect(() => {
-    if (!runId || !node) return
+    if (!runId || !nodeId) return
     setLoading(true); setError(null)
-    fetchProfile(runId, node.id, port, target)
+    fetchProfile(runId, nodeId, port, target)
       .then(p => setProfile(p))
       .catch(e => { setError(e instanceof Error ? e.message : String(e)); setProfile(null) })
       .finally(() => setLoading(false))
-  }, [runId, node, port, target])
+  }, [runId, nodeId, port, target])
 
   if (!node || !spec) return null
   const flagged = new Set((profile?.insights ?? []).map(i => i.column).filter((c): c is string => !!c))
