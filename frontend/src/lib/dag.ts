@@ -22,3 +22,14 @@ export function topoSort(nodes: { id: string }[], edges: { source: string; targe
 export function hasCycle(nodes: { id: string }[], edges: { source: string; target: string }[]): boolean {
   try { topoSort(nodes, edges); return false } catch { return true }
 }
+
+/** The node and everything downstream of it: what "Run from here" re-runs. */
+export function withDescendants(id: string, edges: { source: string; target: string }[]): string[] {
+  const seen = new Set([id])
+  const stack = [id]
+  while (stack.length) {
+    const cur = stack.pop() as string
+    for (const e of edges) if (e.source === cur && !seen.has(e.target)) { seen.add(e.target); stack.push(e.target) }
+  }
+  return [...seen]
+}

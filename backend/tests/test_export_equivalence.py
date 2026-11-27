@@ -312,6 +312,15 @@ def test_clustering_nodes(tmp_path: Path):
     assert ns["report_km_ev"]["clusters"] == 4
 
 
+def test_dataset_snapshot(tmp_path: Path):
+    g = G()
+    g.n("csv", "csv_loader", path=str(BACKEND / "customers_data.csv"))
+    g.n("snap", "dataset_snapshot", folder=str(tmp_path / "snaps"), name="customers"); g.e("csv", "snap")
+    g.n("km", "kmeans", n_clusters=3); g.e("snap", "km")
+    run_both(g.spec(), tmp_path)
+    assert len(list((tmp_path / "snaps").glob("customers-*.parquet"))) == 1  # Athena and the script wrote the same file
+
+
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""

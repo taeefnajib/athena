@@ -111,3 +111,13 @@ def api_fetch(v: V) -> str:
 
 
 EXPORT["api_fetch"] = api_fetch
+
+
+def dataset_snapshot(v: dict) -> str:
+    from athena.nodes.snapshot import default_folder
+    folder = str(v["folder"]).strip() or default_folder()
+    return lines(f"_path, _hash = _athena_snapshot({v['in_dataset']}, {folder!r}, {v['name']!r})",
+                 "print('Snapshot', _hash, '->', _path)", f"{v['out_dataset']} = {v['in_dataset']}")
+
+
+EXPORT["dataset_snapshot"] = dataset_snapshot

@@ -12,7 +12,7 @@ from athena.utils.dataframes import preview_dataframe
 
 
 @node(
-    "api_fetch", label="API Fetch", category="data",
+    "api_fetch", reusable=False, label="API Fetch", category="data",
     description="Fetch JSON records from a REST API endpoint through a saved connection (pagination and nested JSON handled by dlt)",
     outputs=[Port("dataset", "dataset")],
     fields={

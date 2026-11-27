@@ -33,7 +33,7 @@ function AppInner() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <LeftSidebar />
         <GraphCanvas />
-        <RightSidebar />
+        <RightSidebar onRunFrom={(id: string) => run([id])} />
       </div>
       <Toaster />
       {showExportModal && <ExportModal />}

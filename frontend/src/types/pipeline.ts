@@ -134,4 +134,6 @@ export interface NodeFinishEvent {
   preview?: ArtifactPreview
   metrics?: Record<string, number>
   error?: { message: string; traceback: string }
+  /** True when the backend reused this node's result from an earlier run instead of recomputing it. */
+  cached?: boolean
 }

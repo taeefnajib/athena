@@ -227,7 +227,7 @@ Key requirements:
 - **Timeouts and crashes are user-visible errors**: a node over `ATHENA_NODE_TIMEOUT_S`, or a worker that dies (segfault, `os._exit`, out of memory), becomes `node_finish: error` + `run_finish: error`, and the run slot is freed.
 - **Logs**: `ctx.logger` is a `NodeLogger`; every call becomes a `node_log` WS event.
 - **Single run at a time.** A second `POST /run` while one is active returns 409.
-- **Cache key** = SHA256 of `(node.type, canonical_json(node.config), [parent_cache_keys])`. Skip the handler if the key hits.
+- **Cache key** = SHA256 of `(node.type, canonical_json(node.config), [parent_cache_keys], fingerprint of local paths in the config)`, shared across runs (`core/cache.py`, store in `cache/store/`, per-run `index.json`). Skip the handler if the key hits and the node is reusable (`node.cache` and `@node(reusable=True)`, the default). `reusable=False` nodes (file writers, model registration, SQL/API/cloud sources, custom code) always execute and are keyed by a content digest of their outputs (no path fingerprint: their paths are outputs), so downstream reuse follows the data.
 - **Errors are user errors by default.** Wrap each handler call. Internal executor exceptions (KeyError, etc.) surface as 5xx and a different WS close code so the frontend can distinguish.
 
 ---
@@ -421,7 +421,8 @@ Autosave: `~/.athena/autosave/latest.athena` written every 10s when the in-memor
 | `ATHENA_PORT` | `8000` | |
 | `ATHENA_DATA_DIR` | `~/.athena` | Cache, autosave, settings root |
 | `ATHENA_NODE_TIMEOUT_S` | `300` | Per-node soft timeout |
-| `ATHENA_CACHE_MAX_GB` | `2` | Cache eviction trigger (LRU) |
+| `ATHENA_CACHE_MAX_GB` | `2` | Cache eviction trigger (LRU, after each run; the current run's entries are kept) |
+| `ATHENA_KEEP_CACHE` | `false` | Keep cached node results across restarts |
 | `ATHENA_LOG_LEVEL` | `INFO` | structlog level |
 | `ATHENA_ALLOW_CUSTOM_CODE` | `true` | Disables `custom_code` if false |
 

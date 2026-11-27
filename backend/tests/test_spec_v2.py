@@ -68,8 +68,10 @@ def test_retry_gives_up_after_max_attempts(tmp_path: Path):
     assert "flaky failure 2" in err["error"]["message"]
 
 
-@pytest.mark.parametrize(("cache", "expected_calls"), [(True, "1"), (False, "2")])
-def test_cache_false_always_reruns(tmp_path: Path, cache: bool, expected_calls: str):
+# Custom code can read anything (files, services) the cache can't see, so it runs on every run whatever its
+# cache setting; nodes downstream are still reused when its output is unchanged (tests/test_cache_reuse.py).
+@pytest.mark.parametrize(("cache", "expected_calls"), [(True, "2"), (False, "2")])
+def test_custom_code_always_reruns(tmp_path: Path, cache: bool, expected_calls: str):
     counter = tmp_path / "calls"
     spec = _spec(_counting_code(counter), cache=cache)
     for _ in range(2):

@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { NODE_REGISTRY, CATEGORY_META } from '../registry/nodeRegistry'
 import { useExecutionStore } from '../store/executionStore'
+import { useUiStore } from '../store/uiStore'
 
 export interface AthenaNodeData extends Record<string, unknown> {
   nodeType: string
@@ -20,6 +21,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   const spec = NODE_REGISTRY[nodeType]
   const nodeState = useExecutionStore(s => s.nodeStates[id])
   const status = nodeState?.status ?? 'idle'
+  const willRun = useUiStore(s => s.runPreview?.includes(id) ?? false)
 
   if (!spec) {
     return (
@@ -44,7 +46,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         background: 'var(--card)',
         border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
         borderRadius: 10,
-        boxShadow: selected ? '0 0 0 2.5px var(--accent-glow), var(--shadow)' : 'var(--shadow)',
+        boxShadow: willRun ? '0 0 0 2px var(--accent), var(--shadow)' : selected ? '0 0 0 2.5px var(--accent-glow), var(--shadow)' : 'var(--shadow)',
         userSelect: 'none',
         transition: 'border-color 0.15s, box-shadow 0.15s',
         position: 'relative',
@@ -71,6 +73,12 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', flex: 1, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {spec.label}
         </span>
+        {status === 'success' && nodeState?.cached && (
+          <span title="Reused from an earlier run (nothing it depends on changed)"
+                style={{ fontSize: 9, color: 'var(--text-muted)', border: '1px solid var(--border2)', borderRadius: 99, padding: '0 5px', lineHeight: '13px', flexShrink: 0 }}>
+            cached
+          </span>
+        )}
         <div style={{
           width: 7, height: 7, borderRadius: '50%',
           background: status === 'idle' ? 'transparent' : statusColor,
