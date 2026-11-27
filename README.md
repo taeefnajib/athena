@@ -148,6 +148,16 @@ Click **Connections** in the top bar to save a database connection (PostgreSQL, 
 - **SQL Transform** runs SQL on your data with DuckDB: connected inputs are tables `in1` and `in2`, and you can query files directly (`SELECT * FROM 'data/*.parquet'`). Filter, join, aggregate, window functions.
 - **Cloud File Loader** reads CSV, Parquet, JSON Lines or Excel from Amazon S3 (and S3-compatible stores such as MinIO and Cloudflare R2), Google Cloud Storage, Azure Blob / Data Lake, or a local folder. Save the bucket under **Connections → Object Storage** (with **Test connection** and a file browser); paths can be folders or globs like `sales/2026/*.parquet`. Install the driver you need: `uv sync --extra s3` (or `gcs`, `azure`). Exported code reads the same URL with pandas and takes credentials from the environment.
 
+### REST APIs
+
+Pull JSON from any REST API with the **API Fetch** node (`uv sync --extra api`, which installs [dlt](https://dlthub.com)).
+
+- Save the API under **Connections → REST API**: base URL, authentication (bearer token, API key in a header or query parameter, or basic auth) and any extra headers. Secrets go to your OS keychain; **Test connection** requests a path you choose.
+- In the node, set the endpoint path, query parameters (JSON), and where the records are in the response (e.g. `data.items`, or leave it empty to detect).
+- Pagination: *auto* (dlt detects it; check the Logs tab), *page number*, *offset*, *cursor*, *next URL* in the body, or a *Link header*. *Max pages* caps the number of requests (10 by default).
+- Nested objects become columns like `address__city`; nested lists are left out and listed in the Logs tab, or keep everything as JSON with *Nested data → json*.
+- dlt's anonymous telemetry is switched off, in Athena and in exported scripts.
+
 ### More models and smarter tuning
 
 - **LightGBM** and **LightGBM Regressor** (included) and **CatBoost** / **CatBoost Regressor** (`uv sync --extra catboost`; handles text columns without one-hot encoding). Connect `X_val`/`y_val` and set *Early stopping rounds* to stop adding trees when validation stops improving.

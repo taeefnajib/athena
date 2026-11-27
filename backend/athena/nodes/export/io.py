@@ -76,3 +76,38 @@ def mlflow_load(v: V) -> str:
 
 
 EXPORT: dict[str, Template] = {f.__name__: f for f in [db_connector, duckdb_sql, storage_loader, mlflow_register, mlflow_load]}
+
+
+def api_fetch(v: V) -> str:
+    """dlt REST source, as in Athena. Secrets come from ATHENA_<CONNECTION>_TOKEN / _PASSWORD."""
+    from pydantic import SecretStr
+
+    from athena.connectors.http_api import HttpApiConfig, paginator_config, parse_json_object, rest_config
+    out, var = v["out_dataset"], v["var"]
+    prefix = "ATHENA_" + "".join(c if c.isalnum() else "_" for c in (v["connection"] or "api")).upper()
+    try:
+        from athena.connectors.store import get_connection
+        conn = HttpApiConfig(**get_connection(v["connection"])["config"])
+    except Exception:
+        return lines("import pandas as pd", f"# Connection {v['connection']!r} isn't saved on this machine: fill in the API details here.",
+                     f"{out} = pd.DataFrame()")
+    conn = conn.model_copy(update={"token": SecretStr("__ENV_TOKEN__"), "password": SecretStr("__ENV_PASSWORD__")})
+    config = rest_config(conn, v["path"], parse_json_object(v["params"], "Query parameters"), v["data_selector"],
+                         paginator_config(v["paginator"], v["page_param"], int(v["page_size"]), v["response_path"]))
+    source = (repr(config).replace("'__ENV_TOKEN__'", f"os.environ[{prefix + '_TOKEN'!r}]")
+              .replace("'__ENV_PASSWORD__'", f"os.environ[{prefix + '_PASSWORD'!r}]"))
+    needs = [n for n, used in ((f"{prefix}_TOKEN", "_TOKEN'" in source), (f"{prefix}_PASSWORD", "_PASSWORD'" in source)) if used]
+    return lines(
+        "import os", "import dlt", "import duckdb", "from dlt.sources.rest_api import rest_api_source",
+        f"# Set {' and '.join(needs)} before running (connection {v['connection']!r})." if needs else "",
+        f"_src_{var} = rest_api_source({source})",
+        f"_src_{var}.max_table_nesting = 0  # keep nested values as JSON" if v["nested"] == "json" else "",
+        f"_src_{var}.resources['data'].add_limit({int(v['max_pages'])})" if v["max_pages"] else "",
+        f"_pipe_{var} = dlt.pipeline(pipeline_name='athena_{var}', destination=dlt.destinations.duckdb('athena_{var}.duckdb'), dataset_name='fetched')",
+        f"_pipe_{var}.run(_src_{var})",
+        f"with duckdb.connect('athena_{var}.duckdb', read_only=True) as _con:",
+        f"    {out} = _con.execute('SELECT * FROM fetched.data').df().drop(columns=['_dlt_load_id', '_dlt_id'], errors='ignore')",
+    )
+
+
+EXPORT["api_fetch"] = api_fetch

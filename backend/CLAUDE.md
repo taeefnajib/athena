@@ -307,6 +307,12 @@ Rules:
 - `nodes/boosting.py`: LightGBM and CatBoost nodes share `_fit`: early stopping on X_val/y_val when connected, otherwise the common fit/tune path. Optuna lives in `nodes/model.py` (`_optuna_search`) as a method of the HP Tuning Config node.
 - Export functions that need connection details read only non-secret settings (`store.get_connection`); credentials always come from environment variables in exported code.
 
+### REST APIs (dlt)
+
+- `connectors/http_api.py` (extra `athena-backend[api]`): the `http_api` connector and `fetch_frame`, which runs dlt's declarative REST source into a DuckDB file in a short-lived temp folder (dlt's paths are deep; Windows caps paths at 260 characters) and reads the root table back with DuckDB. `nodes/api.py` is the API Fetch node.
+- **No telemetry:** the module sets `RUNTIME__DLTHUB_TELEMETRY=false` before dlt loads; codegen's `PRELUDE` does the same at the top of any exported script that imports dlt.
+- Tests use a local mock API (`tests/test_api_ingestion.py`) covering every pagination style and auth method; never call real APIs in tests.
+
 ### AutoML
 
 `nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.

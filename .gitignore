@@ -74,3 +74,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Created by libraries when no tracking URI is set (e.g. FLAML probing MLflow)
+mlruns/

@@ -295,24 +295,3 @@ class DbConnectorHandler:
         ctx.logger.info("Query returned", rows=len(df), cols=len(df.columns))
         return HandlerResult(outputs=[df], preview=preview_dataframe(df), metrics={"rows": float(len(df))})
 
-@node(
-    "api_fetch", label="API Fetch", category="data",
-    description="Fetch data from a REST API endpoint",
-    outputs=[Port("dataset", "dataset")],
-    fields={
-        "url": ui("URL", widget="text"),
-        "method": ui(widget="select", options=["GET", "POST"]),
-        "auth": ui("Auth Token", widget="text"),
-    },
-    export_note="Not implemented yet.",
-    available=False, unavailable_reason="Not implemented yet: replaced by the HTTP connector (roadmap phase 1).",
-)
-class ApiFetchHandler:
-    class Config(BaseModel):
-        url: str = 'https://api.example.com/data'
-        method: str = 'GET'
-        auth: str = ''
-
-    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-        raise NotImplementedError("Not implemented yet: replaced by the HTTP connector (roadmap phase 1).")
-

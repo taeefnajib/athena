@@ -29,7 +29,7 @@ This file is the plan of record. Each phase ships something usable on its own. T
 
 Goal: make adding a node, connector or runtime a one-place change, and stop running user code in the API process.
 
-**Status (2026-11-27):** 0.1, 0.3, 0.4, 0.5 and 0.6 done. 0.2 done (2026-11-27): 87 of 92 nodes export, proven equivalent by tests; the other 5 are unimplemented stubs. 0.7: tests, toast and `max_features` are fixed, stubs are hidden (5 remain: api_fetch, embedding, blending, lime, api_gen); PR #1 is still open. See `docs/PLUGINS.md` for the plugin and connector SDKs.
+**Status (2026-11-27):** 0.1, 0.3, 0.4, 0.5 and 0.6 done. 0.2 done (2026-11-27): 88 of 92 nodes export, proven equivalent by tests; the other 4 are unimplemented stubs. 0.7: tests, toast and `max_features` are fixed, stubs are hidden (4 remain: embedding, blending, lime, api_gen); PR #1 is still open. See `docs/PLUGINS.md` for the plugin and connector SDKs.
 
 | # | Deliverable | Done when |
 |---|---|---|
@@ -44,7 +44,7 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 ## Phase 1: ML development platform
 
 - ✅ **MLflow** (2026-11-27): tracked pipelines log params, metrics, models, the pipeline file and its exported script to a local store (`~/.athena/mlflow`) or the user's MLflow server; *Register Model* and *Load Registered Model* nodes; a Runs view with side-by-side comparison. Later: model cards, dataset logging, MLflow UI deep links for the local store.
-- **Data:** ✅ (2026-11-27) DuckDB as the local engine (SQL Transform node), Parquet Loader, Object Storage connector + Cloud File Loader (S3/MinIO/R2, GCS, Azure, local through `fsspec`), SQL via the 0.6 connector. Still to do: dlt for API and SaaS ingestion (replacing the `api_fetch` stub); schema discovery and column profiling; Arrow end to end.
+- **Data:** ✅ (2026-11-27) DuckDB as the local engine (SQL Transform node), Parquet Loader, Object Storage connector + Cloud File Loader (S3/MinIO/R2, GCS, Azure, local through `fsspec`), SQL via the 0.6 connector. ✅ REST API ingestion with dlt (2026-11-28): REST API connector + API Fetch node (all common pagination styles, auth methods, nested JSON), replacing the `api_fetch` stub. Still to do: dlt verified sources for SaaS apps; schema discovery and column profiling; Arrow end to end.
 - **Models:** ✅ AutoML Search (FLAML, 2026-11-27) replaced the `automl` stub: leaderboard preview, progress logs, tracked leaderboard, exportable. ✅ LightGBM and CatBoost nodes (classifier + regressor, early stopping, exportable) and Optuna as an HP Tuning method (2026-11-27). Still to do: statsmodels; probability calibration and threshold tuning; PR-AUC.
 - **Tasks:** forecasting (time-series split, backtesting, MAPE/sMAPE/MASE), clustering (silhouette, Davies–Bouldin).
 - **Editor:** a Monaco code view per node; reusable subflows; auto-layout; workflow diff between versions.
