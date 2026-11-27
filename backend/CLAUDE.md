@@ -313,6 +313,12 @@ Rules:
 - **No telemetry:** the module sets `RUNTIME__DLTHUB_TELEMETRY=false` before dlt loads; codegen's `PRELUDE` does the same at the top of any exported script that imports dlt.
 - Tests use a local mock API (`tests/test_api_ingestion.py`) covering every pagination style and auth method; never call real APIs in tests.
 
+### Run outputs and profiling
+
+- The worker pickles every node's result into the run's cache folder (`<data_dir>/cache/<run_id>/`) and records `node_id -> cache key` in `index.json`, whether or not `node.cache` is on (that flag only decides whether a cached result is *reused*). `core/artifacts.py: load_output()` reads them back in the API process; it deserialises results, never runs handlers.
+- `GET /api/runs/{run}/artifacts/{node}/{port}?format=csv|parquet`: tables as CSV/Parquet, reports as JSON, models/transformers as joblib. `GET /api/runs/{run}/profile/{node}/{port}?target=`: the profile. Both 404 with `ARTIFACT_NOT_FOUND` once the run's folder is gone.
+- `athena/profiling.py` is pure pandas/sklearn: column kinds, statistics and histograms, insights (`severity`, `code`, `column`, `message`) and mutual information with the target. It samples frames over 100,000 rows (20,000 for mutual information) and returns strictly JSON-safe values (no NaN/inf).
+
 ### AutoML
 
 `nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.
