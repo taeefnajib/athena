@@ -126,22 +126,27 @@ class NodeHandler(Protocol):
     def __call__(self, ctx: ExecutionContext) -> HandlerResult: ...
 ```
 
-A handler is a plain callable (often a class for stateful nodes, often a function). Registration is via decorator:
+A handler is a callable class defined once with the node SDK (`athena.sdk`). The `@node` decorator holds everything the frontend needs (label, category, ports, form hints, export template), so there is no second registry:
 
 ```python
 # nodes/quality.py
-@register("imputer")
-class ImputerHandler:
-    inputs  = [PortSpec("dataset", "dataset")]
-    outputs = [PortSpec("dataset", "dataset")]
+from athena.sdk import Port, node, ui
 
-    class config_schema(BaseModel):
+@node(
+    "imputer", label="Missing Value Imputer", category="quality",
+    description="Fill missing values",
+    inputs=[Port("dataset", "dataset")], outputs=[Port("dataset", "dataset")],
+    fields={"strategy": ui("Strategy"), "fill_value": ui("Fill Value")},   # labels/widgets; options come from Literal
+    code=_CODE_IMPUTER,                    # export template, or export_note="why it can't be exported"
+)
+class ImputerHandler:
+    class Config(BaseModel):
         strategy: Literal["mean", "median", "mode", "constant", "knn"] = "mean"
         fill_value: str = "0"
         cols: str = ""
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-        cfg = self.config_schema(**ctx.config)
+        cfg = self.Config(**ctx.config)
         df: pd.DataFrame = ctx.inputs[0]
         # ... real sklearn logic ...
         return HandlerResult(
@@ -162,7 +167,12 @@ class ImputerHandler:
 
 ## 5. Executor
 
-`core/executor.py`. Async, single-pipeline-at-a-time, in-process.
+Two parts, single-pipeline-at-a-time:
+
+- **`runtime/engine.py`** walks the DAG and calls handlers. It is synchronous and runs **only inside a worker process** (`runtime/worker.py`), one fresh process per run. A warm standby worker has already imported the nodes, so runs start fast.
+- **`core/executor.py`** is the supervisor inside the API server. It hands the run to a worker, relays the worker's events (sent over a `Pipe`, so they survive the worker dying) to the broker, and enforces per-node timeouts (`ATHENA_NODE_TIMEOUT_S`), hard cancellation after a grace period, and crash reporting.
+
+The sketch below shows the engine's logic; the real code lives in `runtime/engine.py`.
 
 ```python
 async def execute(spec: PipelineSpec, run_id: str, broker: EventBroker,
@@ -212,8 +222,10 @@ async def execute(spec: PipelineSpec, run_id: str, broker: EventBroker,
 ```
 
 Key requirements:
-- **Heavy work runs in `run_in_threadpool`** so the FastAPI event loop stays responsive (WS messages keep flowing). For CPU-bound ML, use `anyio.to_thread.run_sync` or `concurrent.futures.ThreadPoolExecutor`. Don't block the loop.
-- **Cancellation** is cooperative. `POST /api/runs/{id}/cancel` flips a flag the executor checks between nodes. In-flight node finishes naturally (we don't kill threads — too dangerous with C extensions).
+- **Node code never runs in the API process.** Handlers, `custom_code` included, run in the worker. Don't import or call handlers from API routes.
+- **Cancellation** is cooperative first: the worker checks a flag between nodes, and handlers can poll `ctx.cancelled()`. If the in-flight node hasn't finished `CANCEL_GRACE_S` after Stop, the supervisor kills the worker and reports the node as cancelled.
+- **Timeouts and crashes are user-visible errors**: a node over `ATHENA_NODE_TIMEOUT_S`, or a worker that dies (segfault, `os._exit`, out of memory), becomes `node_finish: error` + `run_finish: error`, and the run slot is freed.
+- **Logs**: `ctx.logger` is a `NodeLogger`; every call becomes a `node_log` WS event.
 - **Single run at a time.** A second `POST /run` while one is active returns 409.
 - **Cache key** = SHA256 of `(node.type, canonical_json(node.config), [parent_cache_keys])`. Skip the handler if the key hits.
 - **Errors are user errors by default.** Wrap each handler call. Internal executor exceptions (KeyError, etc.) surface as 5xx and a different WS close code so the frontend can distinguish.
@@ -256,38 +268,48 @@ If a client connects after the run has already finished, send the buffered final
 
 ## 7. The node registry
 
-Centralized in `core/registry.py`. Self-registration via decorator + module-level imports in `nodes/__init__.py`:
+`@node` (in `athena/sdk/node.py`) registers into `core/registry.py`: `NODE_REGISTRY` (type → handler instance), `NODE_META` (type → `NodeMeta`) and `CATEGORIES`. Built-in nodes register when `athena.nodes` is imported; plugins register through the `athena.nodes` entry point (see Plugins below). A plugin that introduces a category calls `register_category()` first.
 
-```python
-# core/registry.py
-NODE_REGISTRY: dict[str, type[NodeHandler]] = {}
+`GET /api/nodes` serves `node_spec()` for every node plus the categories. **The frontend builds its library and inspector forms from this response**; it has no node definitions of its own.
 
-def register(node_type: str):
-    def deco(cls):
-        if node_type in NODE_REGISTRY:
-            raise ValueError(f"Duplicate node type: {node_type}")
-        NODE_REGISTRY[node_type] = cls
-        return cls
-    return deco
-```
+Rules:
+- Labels, widgets and options: put them in `fields={...: ui(...)}`. Prefer `Literal[...]` types so options come from the type and validation matches the form.
+- `available=False, unavailable_reason=...` hides a not-yet-implemented node from the library while keeping old pipelines loadable. Prefer not adding stubs at all.
+- `tests/test_node_specs.py` checks every node: UI hints match `Config`, select defaults are among the options, ports are unique, and export templates fill from defaults.
 
-The `GET /api/nodes` endpoint exposes the registry as JSON for the frontend (and humans debugging) — **but the frontend's source of truth is its own `nodeRegistry.ts`**. The endpoint is for verification, not for runtime introspection. They must agree; keep them in lockstep on every change.
+`custom_code` executes user-supplied Python. It runs in the worker like every handler, and is refused when `ATHENA_ALLOW_CUSTOM_CODE=false`.
 
-### v1 must-have nodes (build these first, in this order)
+### Plugins
 
-1. `csv_loader`, `synth_data`
-2. `imputer`, `dup_remover`, `scaler`, `ohe`, `label_enc`
-3. `train_test`
-4. `lin_reg`, `log_reg`, `rf`
-5. `metrics`, `conf_matrix`, `residual`
-6. `csv_export`, `model_saver`
+`athena/plugins.py: load_plugins()` imports the built-ins (`athena.nodes`, `athena.connectors`) and every package declaring the `athena.nodes` / `athena.connectors` entry points. It runs once per process: in the API server (at import of `main`, `api/nodes`, `codegen`) and in each worker. A plugin that fails to import is recorded (`GET /api/plugins`) and skipped. The authoring guide is `docs/PLUGINS.md`.
 
-These are enough to validate the architecture end-to-end. Then:
+### Connectors and connections
 
-- v1.1: `feat_gen`, `pca`, `tfidf`, `cv_split`, `xgb`, `dtree`, `knn`, `svm`, `nb`, `mlp`, `roc_curve`, `feat_imp_viz`, `predict`, `report_gen`
-- v1.2: `excel_loader`, `json_loader`, `db_connector`, `api_fetch`, `data_merge`, `data_sample`, `outlier`, `type_conv`, `validator`, `embedding`, `date_feat`, `feat_imp_sel`, `smote`, `undersample`, `oversample`, `class_weight`, `train_val_test`, `voting`, `stacking`, `blending`, `automl`, `hp_tuner`, `pipeline_wrap`, `shap`, `lime`, `debugger`, `api_gen`, `drift_detect`, `perf_tracker`, `custom_code`
+- **Connector** (`athena/sdk/connector.py`, `@connector`): a type of external system. It declares a Pydantic `Config` (`SecretStr` fields are secrets) and implements `test`, `list` and `read`. Built-in: `sql` (`connectors/sql.py`, SQLAlchemy; DB drivers are optional extras `postgres`, `mysql`, `duckdb`, `mssql`).
+- **Connection** (`connectors/store.py`): a user's saved, named configuration in `<data_dir>/connections.json`. Secret fields hold only a marker there; the values live in the OS keychain (`connectors/secrets.py`, `keyring`) or are `env://VAR` references resolved at use time.
+- Nodes take a connection by **name** (`ui(widget="connection", connector="sql")`) and resolve it in the worker with `resolve_connection(name)`. Never put credentials in node config, specs, logs, previews or exported code; exports read them from environment variables.
+- API: `GET /api/connectors`, `GET/PUT /api/connections`, `GET/DELETE /api/connections/{name}`, `POST /api/connections/test`, `GET /api/connections/{name}/resources`. Secrets are write-only: responses say only whether one is set (and show `env://` references).
+- Tests use `secrets.set_store(MemoryStore())`; never touch the real keychain in tests.
 
-`custom_code` is **last** for a reason — it executes user-supplied Python. For a local-only app this is acceptable (the user is the attacker and the victim), but document the risk in the UI tooltip and don't run it in subprocess sandboxing for v1; just `exec` in a restricted namespace. Revisit if Athena ever ships hosted.
+### Experiment tracking and the model registry (MLflow)
+
+- `athena/tracking/` (optional extra `athena-backend[mlflow]`; MLflow is imported lazily, so Athena runs without it).
+- **Destination:** `session.mlflow_session(connection)` points MLflow at a saved `mlflow` connection or, for `""`, the local store (`<data_dir>/mlflow/mlflow.db` + `artifacts/`). MLflow state is process-global: always go through the session, which restores it.
+- **Observer:** `runtime/observers.py` is the generic hook (`on_run_start`, `on_node_finish`, `on_run_finish`, optional `abandon`). `tracking/observer.py` logs a tracked run: params `<node_id>.<field>`, metrics `<node_id>.<metric>`, `athena/pipeline.json` + `athena/pipeline.py`, and every `model` output (cloudpickle, pinned pip requirements). Observer errors become `run_info` warnings and close the MLflow run as FAILED; they never fail the pipeline. If the supervisor kills a worker, it marks the tracked run KILLED/FAILED.
+- **Nodes:** `mlflow_register` (into the tracking destination, reusing the model the run already logged; local store when untracked) and `mlflow_load` (by alias or version, from any destination).
+- **API:** `GET /api/tracking/status`, `POST /api/tracking/local/init` (the one-time ~20 s store creation), `GET /api/tracking/experiments`, `GET /api/tracking/runs`.
+- Tests use the `mlflow_local_store` fixture (conftest): one template store per session, copied per test; creating a store costs ~20 s.
+
+### Data, storage and boosting
+
+- `nodes/files.py`: Parquet Loader, SQL Transform (DuckDB, a private in-memory connection per run; inputs registered as `in1`/`in2`), Cloud File Loader. `connectors/storage.py`: the `storage` connector (fsspec; drivers are extras `s3`, `gcs`, `azure`). `read_frame` is the one place that turns a path + format into a DataFrame.
+- Base dependencies include `pyarrow`, `duckdb`, `fsspec` and `lightgbm` (all lean). CatBoost and Optuna are extras.
+- `nodes/boosting.py`: LightGBM and CatBoost nodes share `_fit`: early stopping on X_val/y_val when connected, otherwise the common fit/tune path. Optuna lives in `nodes/model.py` (`_optuna_search`) as a method of the HP Tuning Config node.
+- Export functions that need connection details read only non-secret settings (`store.get_connection`); credentials always come from environment variables in exported code.
+
+### AutoML
+
+`nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.
 
 ---
 

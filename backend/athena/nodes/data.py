@@ -4,16 +4,28 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification, make_regression
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import TextPreview
 
 
-@register("csv_loader")
+@node(
+    "csv_loader", label="CSV Loader", category="data",
+    description="Load data from a CSV file",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "path": ui("File Path", widget="file", accept=".csv,.tsv,.txt,text/csv"),
+        "sep": ui("Separator", widget="select", options=[",", ";", "\\t", "|"]),
+        "header": ui("Header Row"),
+        "encoding": ui(widget="select", options=["utf-8", "latin-1", "utf-16"]),
+    },
+    code=EXPORT["csv_loader"],
+)
 class CsvLoaderHandler:
     class Config(BaseModel):
-        path: str = "data.csv"
+        path: str = ""
         sep: str = ","
         header: bool = True
         encoding: str = "utf-8"
@@ -35,7 +47,17 @@ class CsvLoaderHandler:
         )
 
 
-@register("synth_data")
+@node(
+    "synth_data", label="Synthetic Data", category="data",
+    description="Generate synthetic training data",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "rows": ui(),
+        "features": ui(),
+        "task": ui("Task Type", widget="select", options=["classification", "regression", "clustering"]),
+    },
+    code=EXPORT["synth_data"],
+)
 class SynthDataHandler:
     class Config(BaseModel):
         rows: int = 1000
@@ -50,7 +72,9 @@ class SynthDataHandler:
         else:
             X, y = make_classification(
                 n_samples=cfg.rows, n_features=cfg.features,
-                n_informative=min(cfg.features, 5), random_state=42,
+                n_informative=min(cfg.features, 5),
+                n_redundant=max(0, min(2, cfg.features - min(cfg.features, 5))),  # informative + redundant <= features
+                random_state=42,
             )
         df = pd.DataFrame(X, columns=[f"feature_{i}" for i in range(cfg.features)])
         df["target"] = y
@@ -61,7 +85,17 @@ class SynthDataHandler:
         )
 
 
-@register("excel_loader")
+@node(
+    "excel_loader", label="Excel Loader", category="data",
+    description="Load data from an Excel file",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "path": ui("File Path", widget="file", accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        "sheet": ui("Sheet Name"),
+        "header": ui("Header Row"),
+    },
+    code=EXPORT["excel_loader"],
+)
 class ExcelLoaderHandler:
     class Config(BaseModel):
         path: str = ""
@@ -83,7 +117,16 @@ class ExcelLoaderHandler:
         )
 
 
-@register("json_loader")
+@node(
+    "json_loader", label="JSON Loader", category="data",
+    description="Load structured JSON data",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "path": ui("File Path"),
+        "orient": ui("Orientation"),
+    },
+    code=EXPORT["json_loader"],
+)
 class JsonLoaderHandler:
     class Config(BaseModel):
         path: str = "data.json"
@@ -104,7 +147,17 @@ class JsonLoaderHandler:
         )
 
 
-@register("data_merge")
+@node(
+    "data_merge", label="Data Merge / Join", category="data",
+    description="Merge two datasets on a key column",
+    inputs=[Port("left", "dataset"), Port("right", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "on": ui("Join Key"),
+        "how": ui("Join Type"),
+    },
+    code=EXPORT["data_merge"],
+)
 class DataMergeHandler:
     class Config(BaseModel):
         on: str = "id"
@@ -130,11 +183,22 @@ class DataMergeHandler:
         )
 
 
-@register("data_sample")
+@node(
+    "data_sample", label="Data Sampling", category="data",
+    description="Sample rows from dataset",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "n": ui("Sample Size"),
+        "frac": ui("Fraction"),
+        "random_state": ui("Random Seed"),
+    },
+    code=EXPORT["data_sample"],
+)
 class DataSampleHandler:
     class Config(BaseModel):
         n: int = 500
-        frac: float = 0.0
+        frac: float = 0.1
         random_state: int = 42
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -152,10 +216,19 @@ class DataSampleHandler:
         )
 
 
-@register("manual_input")
+@node(
+    "manual_input", label="Manual Data Input", category="data",
+    description="Type one or more records by hand — feed into scalers, encoders, and models for prediction",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "columns": ui("Column Names (comma-separated)"),
+        "data": ui("Data Rows (one row per line, comma-separated values)", widget="textarea"),
+    },
+    code=EXPORT["manual_input"],
+)
 class ManualInputHandler:
     class Config(BaseModel):
-        columns: str = ""
+        columns: str = "feature1, feature2"
         data: str = ""
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -192,13 +265,54 @@ class ManualInputHandler:
         )
 
 
-def _stub(type_name: str, msg: str = ""):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(msg or f"{type_name} is not yet implemented.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
+@node(
+    "db_connector", label="SQL Query", category="data",
+    description="Run a SQL query against a saved database connection",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "connection": ui("Connection", widget="connection", connector="sql"),
+        "query": ui("SQL Query", widget="textarea", mono=True),
+        "limit": ui("Row limit", help="0 = no limit"),
+    },
+    code=EXPORT["db_connector"],
+)
+class DbConnectorHandler:
+    class Config(BaseModel):
+        connection: str = ""
+        query: str = "SELECT * FROM my_table"
+        limit: int = 0
 
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        from athena.connectors.store import resolve_connection
+        cfg = self.Config(**ctx.config)
+        if not cfg.connection:
+            raise ValueError("Choose a connection (create one under Connections in the top bar)")
+        if not cfg.query.strip():
+            raise ValueError("Enter a SQL query")
+        impl, conn_cfg = resolve_connection(cfg.connection)
+        ctx.logger.info("Running query", connection=cfg.connection, limit=cfg.limit or "none")
+        df = impl.read(conn_cfg, cfg.query, limit=cfg.limit or None)
+        ctx.logger.info("Query returned", rows=len(df), cols=len(df.columns))
+        return HandlerResult(outputs=[df], preview=preview_dataframe(df), metrics={"rows": float(len(df))})
 
-_stub("db_connector", "db_connector requires a live database — export the pipeline and use SQLAlchemy manually.")
-_stub("api_fetch",   "api_fetch makes external HTTP calls — export the pipeline and call the API manually.")
+@node(
+    "api_fetch", label="API Fetch", category="data",
+    description="Fetch data from a REST API endpoint",
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "url": ui("URL", widget="text"),
+        "method": ui(widget="select", options=["GET", "POST"]),
+        "auth": ui("Auth Token", widget="text"),
+    },
+    export_note="Not implemented yet.",
+    available=False, unavailable_reason="Not implemented yet: replaced by the HTTP connector (roadmap phase 1).",
+)
+class ApiFetchHandler:
+    class Config(BaseModel):
+        url: str = 'https://api.example.com/data'
+        method: str = 'GET'
+        auth: str = ''
+
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        raise NotImplementedError("Not implemented yet: replaced by the HTTP connector (roadmap phase 1).")
+

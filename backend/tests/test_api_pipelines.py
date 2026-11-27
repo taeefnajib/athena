@@ -100,7 +100,7 @@ def test_export_json():
     resp = client.post("/api/pipelines/export", json={"spec": _simple_spec(), "format": "json"})
     assert resp.status_code == 200
     data = json.loads(resp.content)
-    assert data["version"] == 1
+    assert data["version"] == 2  # v1 input is upgraded to spec v2
 
 
 def test_autosave_roundtrip():
@@ -117,10 +117,14 @@ def test_autosave_roundtrip():
 def test_nodes_endpoint():
     resp = client.get("/api/nodes")
     assert resp.status_code == 200
-    nodes = resp.json()["nodes"]
-    assert "csv_loader" in nodes
-    assert "imputer" in nodes
-    assert "rf" in nodes
+    body = resp.json()
+    nodes = {n["type"]: n for n in body["nodes"]}
+    assert {"csv_loader", "imputer", "rf"} <= nodes.keys()
+    rf = nodes["rf"]
+    assert rf["label"] == "Random Forest" and rf["category"] == "model"
+    assert [p["name"] for p in rf["outputs"]] == ["model"]
+    assert {f["id"] for f in rf["config"]} >= {"n_estimators", "max_depth"}
+    assert any(c["id"] == "model" for c in body["categories"])
 
 
 def test_cancel_run():

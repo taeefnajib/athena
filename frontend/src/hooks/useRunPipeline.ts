@@ -62,6 +62,11 @@ export function useRunPipeline() {
           if (e.status === 'completed') showToast('Pipeline completed successfully!', 'success')
           else if (e.status === 'error') showToast('Pipeline failed — check node errors', 'error')
         },
+        onRunInfo: (e) => {
+          if (e.tracking) exec.setTracking(e.tracking)
+          if (e.message) showToast(e.message, 'info')
+          if (e.warning) showToast(`Tracking: ${e.warning}`, 'warn')
+        },
         onError: () => {
           exec.setStatus('error')
           showToast("Couldn't reach the backend. Is uvicorn running on :8000?", 'error')

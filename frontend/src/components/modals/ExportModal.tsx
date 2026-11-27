@@ -1,17 +1,19 @@
 import { useUiStore } from '../../store/uiStore'
 import { usePipelineStore } from '../../store/pipelineStore'
 import { api } from '../../lib/api'
+import { NODE_REGISTRY } from '../../registry/nodeRegistry'
 
 const FORMATS = [
   { id: 'python',   label: 'Python Script',       icon: '🐍', desc: 'Clean pandas + scikit-learn code' },
   { id: 'notebook', label: 'Jupyter Notebook',     icon: '📓', desc: 'Interactive .ipynb with cells' },
   { id: 'json',     label: 'Pipeline JSON',        icon: '⚙',  desc: 'Serialized pipeline configuration' },
-  { id: 'model',    label: 'Trained Model (.pkl)', icon: '💾', desc: 'Download serialized model file' },
 ]
 
 export function ExportModal() {
   const { setShowExportModal, showToast } = useUiStore()
   const toPipelineSpec = usePipelineStore(s => s.toPipelineSpec)
+  const nodes = usePipelineStore(s => s.nodes)
+  const notExportable = [...new Set(nodes.map(n => NODE_REGISTRY[n.type]).filter(s => s && !s.exportable).map(s => s!.label))]
 
   const onExport = async (format: string) => {
     try {
@@ -19,13 +21,13 @@ export function ExportModal() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = format === 'python' ? 'pipeline.py' : format === 'notebook' ? 'pipeline.ipynb' : format === 'json' ? 'pipeline.json' : 'model.pkl'
+      a.download = format === 'python' ? 'pipeline.py' : format === 'notebook' ? 'pipeline.ipynb' : 'pipeline.json'
       a.click()
       URL.revokeObjectURL(url)
       setShowExportModal(false)
       showToast(`Exported as ${format}`, 'success')
     } catch {
-      showToast('Export failed — run the pipeline first', 'error')
+      showToast('Export failed', 'error')
     }
   }
 
@@ -37,6 +39,11 @@ export function ExportModal() {
           <button onClick={() => setShowExportModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 2 }}>×</button>
         </div>
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {notExportable.length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--warning)', border: '1px solid var(--warning)', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
+              Not exportable yet: {notExportable.join(', ')}. The script marks where these nodes are.
+            </div>
+          )}
           {FORMATS.map(f => (
             <div
               key={f.id}
@@ -53,6 +60,9 @@ export function ExportModal() {
               <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 14 }}>↓</span>
             </div>
           ))}
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            The script and notebook run without Athena. To keep a trained model, add a Model Saver or Register Model node.
+          </div>
         </div>
       </div>
     </div>

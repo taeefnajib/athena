@@ -39,18 +39,30 @@ def _reg_df() -> pd.DataFrame:
     return df
 
 
-def _split(df: pd.DataFrame, tmp_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    handler = TrainTestHandler()
+class Split:
+    """Outputs of the train_test node, in port order: X_train, y_train, X_test, y_test."""
+
+    def __init__(self, outputs: list) -> None:
+        self.X_train, self.y_train, self.X_test, self.y_test = outputs
+
+    @property
+    def train(self) -> list:  # model inputs: X_train, y_train, X_val, y_val, hp_config
+        return [self.X_train, self.y_train, None, None, None]
+
+    def test(self, model: object) -> list:  # eval inputs: model, X_test, y_test
+        return [model, self.X_test, self.y_test]
+
+
+def _split(df: pd.DataFrame, tmp_path: Path) -> Split:
     ctx = _ctx(tmp_path, "train_test", {"test_size": 0.2, "random_state": 42, "stratify": False}, [df])
-    result = handler(ctx)
-    return result.outputs[0], result.outputs[1]  # train, test
+    return Split(TrainTestHandler()(ctx).outputs)
 
 
 def test_rf_fits_and_predicts(tmp_path: Path):
     df = _clf_df()
-    train, test = _split(df, tmp_path)
+    sp = _split(df, tmp_path)
     handler = RfHandler()
-    ctx = _ctx(tmp_path, "rf", {"n_estimators": 10, "max_depth": 5, "max_features": "sqrt", "random_state": 42}, [train])
+    ctx = _ctx(tmp_path, "rf", {"n_estimators": 10, "max_depth": 5, "max_features": "sqrt", "random_state": 42}, sp.train)
     result = handler(ctx)
     model = result.outputs[0]
     assert hasattr(model, "predict")
@@ -59,12 +71,12 @@ def test_rf_fits_and_predicts(tmp_path: Path):
 
 def test_rf_metrics(tmp_path: Path):
     df = _clf_df()
-    train, test = _split(df, tmp_path)
+    sp = _split(df, tmp_path)
 
-    rf_ctx = _ctx(tmp_path, "rf", {"n_estimators": 10, "max_depth": 5, "max_features": "sqrt", "random_state": 42}, [train])
+    rf_ctx = _ctx(tmp_path, "rf", {"n_estimators": 10, "max_depth": 5, "max_features": "sqrt", "random_state": 42}, sp.train)
     model = RfHandler()(rf_ctx).outputs[0]
 
-    met_ctx = _ctx(tmp_path, "metrics", {"task": "classification", "average": "weighted"}, [model, test])
+    met_ctx = _ctx(tmp_path, "metrics", {"task": "classification", "average": "weighted"}, sp.test(model))
     result = MetricsHandler()(met_ctx)
     m = result.metrics
     assert "accuracy" in m
@@ -74,9 +86,9 @@ def test_rf_metrics(tmp_path: Path):
 
 def test_lin_reg_fits(tmp_path: Path):
     df = _reg_df()
-    train, _ = _split(df, tmp_path)
+    sp = _split(df, tmp_path)
     handler = LinRegHandler()
-    ctx = _ctx(tmp_path, "lin_reg", {"fit_intercept": True}, [train])
+    ctx = _ctx(tmp_path, "lin_reg", {"fit_intercept": True}, sp.train)
     result = handler(ctx)
     model = result.outputs[0]
     assert hasattr(model, "coef_")
@@ -84,9 +96,9 @@ def test_lin_reg_fits(tmp_path: Path):
 
 def test_log_reg_fits(tmp_path: Path):
     df = _clf_df()
-    train, _ = _split(df, tmp_path)
+    sp = _split(df, tmp_path)
     handler = LogRegHandler()
-    ctx = _ctx(tmp_path, "log_reg", {"C": 1.0, "solver": "lbfgs", "max_iter": 200}, [train])
+    ctx = _ctx(tmp_path, "log_reg", {"C": 1.0, "solver": "lbfgs", "max_iter": 200}, sp.train)
     result = handler(ctx)
     model = result.outputs[0]
     assert hasattr(model, "predict")
@@ -94,11 +106,11 @@ def test_log_reg_fits(tmp_path: Path):
 
 def test_conf_matrix_produces_plot(tmp_path: Path):
     df = _clf_df()
-    train, test = _split(df, tmp_path)
-    rf_ctx = _ctx(tmp_path, "rf", {"n_estimators": 10, "max_depth": 5, "max_features": "sqrt", "random_state": 42}, [train])
+    sp = _split(df, tmp_path)
+    rf_ctx = _ctx(tmp_path, "rf", {"n_estimators": 10, "max_depth": 5, "max_features": "sqrt", "random_state": 42}, sp.train)
     model = RfHandler()(rf_ctx).outputs[0]
 
-    cm_ctx = _ctx(tmp_path, "conf_matrix", {"normalize": "none", "cmap": "Blues"}, [model, test])
+    cm_ctx = _ctx(tmp_path, "conf_matrix", {"normalize": "none", "cmap": "Blues"}, sp.test(model))
     result = ConfMatrixHandler()(cm_ctx)
     assert result.preview.kind == "plot"
     assert len(result.preview.data) > 100  # non-empty base64
@@ -106,22 +118,22 @@ def test_conf_matrix_produces_plot(tmp_path: Path):
 
 def test_residual_plot(tmp_path: Path):
     df = _reg_df()
-    train, test = _split(df, tmp_path)
-    lr_ctx = _ctx(tmp_path, "lin_reg", {"fit_intercept": True}, [train])
+    sp = _split(df, tmp_path)
+    lr_ctx = _ctx(tmp_path, "lin_reg", {"fit_intercept": True}, sp.train)
     model = LinRegHandler()(lr_ctx).outputs[0]
 
-    res_ctx = _ctx(tmp_path, "residual", {}, [model, test])
+    res_ctx = _ctx(tmp_path, "residual", {}, sp.test(model))
     result = ResidualHandler()(res_ctx)
     assert result.preview.kind == "plot"
 
 
 def test_regression_metrics(tmp_path: Path):
     df = _reg_df()
-    train, test = _split(df, tmp_path)
-    lr_ctx = _ctx(tmp_path, "lin_reg", {"fit_intercept": True}, [train])
+    sp = _split(df, tmp_path)
+    lr_ctx = _ctx(tmp_path, "lin_reg", {"fit_intercept": True}, sp.train)
     model = LinRegHandler()(lr_ctx).outputs[0]
 
-    met_ctx = _ctx(tmp_path, "metrics", {"task": "regression", "average": "weighted"}, [model, test])
+    met_ctx = _ctx(tmp_path, "metrics", {"task": "regression", "average": "weighted"}, sp.test(model))
     result = MetricsHandler()(met_ctx)
     assert "rmse" in result.metrics
     assert "r2" in result.metrics

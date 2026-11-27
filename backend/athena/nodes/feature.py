@@ -4,12 +4,25 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 
 
-@register("scaler")
+
+
+@node(
+    "scaler", label="Scaler", category="feature",
+    description="Normalize or standardize features",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset"), Port("transformer", "transformer")],
+    fields={
+        "method": ui(),
+        "cols": ui("Columns"),
+    },
+    code=EXPORT["scaler"],
+)
 class ScalerHandler:
     class Config(BaseModel):
         method: Literal["StandardScaler", "MinMaxScaler", "RobustScaler", "MaxAbsScaler"] = "StandardScaler"
@@ -39,7 +52,18 @@ class ScalerHandler:
         return HandlerResult(outputs=[df, scaler], preview=preview_dataframe(df))
 
 
-@register("ohe")
+@node(
+    "ohe", label="One-Hot Encoder", category="feature",
+    description="Encode categorical columns as binary",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset"), Port("transformer", "transformer")],
+    fields={
+        "cols": ui("Columns"),
+        "drop": ui("Drop First"),
+        "sparse": ui("Sparse Output"),
+    },
+    code=EXPORT["ohe"],
+)
 class OheHandler:
     class Config(BaseModel):
         cols: str = ""
@@ -68,7 +92,16 @@ class OheHandler:
         return HandlerResult(outputs=[result, enc], preview=preview_dataframe(result))
 
 
-@register("label_enc")
+@node(
+    "label_enc", label="Label Encoder", category="feature",
+    description="Encode labels as integers",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset"), Port("transformer", "transformer")],
+    fields={
+        "cols": ui("Columns"),
+    },
+    code=EXPORT["label_enc"],
+)
 class LabelEncHandler:
     class Config(BaseModel):
         cols: str = "target"
@@ -86,7 +119,19 @@ class LabelEncHandler:
         return HandlerResult(outputs=[df, encoders], preview=preview_dataframe(df))
 
 
-@register("str_split")
+@node(
+    "str_split", label="String Splitter", category="feature",
+    description="Split a string column by a configurable separator",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "col": ui("Column"),
+        "sep": ui("Separator"),
+        "expand": ui("Expand to Columns"),
+        "prefix": ui("Column Prefix"),
+    },
+    code=EXPORT["str_split"],
+)
 class StrSplitHandler:
     class Config(BaseModel):
         col: str = "text"
@@ -116,7 +161,17 @@ class StrSplitHandler:
         return HandlerResult(outputs=[df], preview=preview_dataframe(df))
 
 
-@register("col_selector")
+@node(
+    "col_selector", label="Column Selector", category="feature",
+    description="Select or drop columns",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "mode": ui(),
+        "cols": ui("Columns"),
+    },
+    code=EXPORT["col_selector"],
+)
 class ColSelectorHandler:
     class Config(BaseModel):
         mode: Literal["include", "exclude"] = "include"
@@ -136,7 +191,17 @@ class ColSelectorHandler:
         return HandlerResult(outputs=[result], preview=preview_dataframe(result))
 
 
-@register("feat_gen")
+@node(
+    "feat_gen", label="Feature Generator", category="feature",
+    description="Create polynomial or interaction features",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "degree": ui(),
+        "interaction": ui("Interaction Only"),
+    },
+    code=EXPORT["feat_gen"],
+)
 class FeatGenHandler:
     class Config(BaseModel):
         degree: int = 2
@@ -166,7 +231,18 @@ class FeatGenHandler:
                              metrics={"features_in": float(len(num_cols)), "features_out": float(len(new_names))})
 
 
-@register("tfidf")
+@node(
+    "tfidf", label="Text Vectorizer", category="feature",
+    description="TF-IDF or CountVectorizer for text",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "col": ui("Text Column"),
+        "method": ui(),
+        "max_features": ui("Max Features"),
+    },
+    code=EXPORT["tfidf"],
+)
 class TfidfHandler:
     class Config(BaseModel):
         col: str = "text"
@@ -192,7 +268,17 @@ class TfidfHandler:
                              metrics={"features": float(mat.shape[1])})
 
 
-@register("date_feat")
+@node(
+    "date_feat", label="Date Feature Extractor", category="feature",
+    description="Extract year, month, day, weekday, etc.",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "col": ui("Date Column"),
+        "features": ui("Extract"),
+    },
+    code=EXPORT["date_feat"],
+)
 class DateFeatHandler:
     class Config(BaseModel):
         col: str = "date"
@@ -221,7 +307,17 @@ class DateFeatHandler:
                              metrics={"features_added": float(added)})
 
 
-@register("feat_imp_sel")
+@node(
+    "feat_imp_sel", label="Feature Importance Sel", category="feature",
+    description="Select top features by importance score",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "k": ui("Top K Features"),
+        "method": ui(),
+    },
+    code=EXPORT["feat_imp_sel"],
+)
 class FeatImpSelHandler:
     class Config(BaseModel):
         k: int = 20
@@ -249,7 +345,17 @@ class FeatImpSelHandler:
                              metrics={"features_in": float(len(num_X.columns)), "features_out": float(len(selected))})
 
 
-@register("pca")
+@node(
+    "pca", label="PCA", category="feature",
+    description="Principal Component Analysis",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "n_components": ui("Components"),
+        "whiten": ui(),
+    },
+    code=EXPORT["pca"],
+)
 class PcaHandler:
     class Config(BaseModel):
         n_components: int = 10
@@ -283,12 +389,23 @@ class PcaHandler:
                              metrics={"components": float(n), "variance_explained": var_explained})
 
 
-def _stub(type_name: str):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(f"{type_name} is not yet implemented in v1.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
+@node(
+    "embedding", label="Embedding Generator", category="feature",
+    description="Generate embeddings for text or categories",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "col": ui("Column", widget="text"),
+        "dim": ui("Dimensions", widget="number"),
+    },
+    export_note="Not implemented yet.",
+    available=False, unavailable_reason="Not implemented yet: embeddings arrive with the deep learning plugins (roadmap phase 3).",
+)
+class EmbeddingHandler:
+    class Config(BaseModel):
+        col: str = 'text'
+        dim: int = 128
 
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        raise NotImplementedError("Not implemented yet: embeddings arrive with the deep learning plugins (roadmap phase 3).")
 
-_stub("embedding")

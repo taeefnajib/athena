@@ -3,13 +3,28 @@ from typing import Literal
 import pandas as pd
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe, get_target_column
 from athena.schemas.artifacts import TextPreview
 
 
-@register("train_test")
+
+
+@node(
+    "train_test", label="Train / Test Split", category="split",
+    description="Split into training and test sets — outputs X/y separately",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    fields={
+        "test_size": ui("Test Size"),
+        "random_state": ui("Random Seed"),
+        "stratify": ui(),
+        "target_col": ui("Target Column (blank = auto)"),
+    },
+    code=EXPORT["train_test"],
+)
 class TrainTestHandler:
     class Config(BaseModel):
         test_size: float = 0.2
@@ -42,7 +57,19 @@ class TrainTestHandler:
         )
 
 
-@register("train_val_test")
+@node(
+    "train_val_test", label="Train/Val/Test Split", category="split",
+    description="Three-way dataset split — outputs X/y separately",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val"), Port("y_val", "y_val"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    fields={
+        "val_size": ui("Val Size"),
+        "test_size": ui("Test Size"),
+        "random_state": ui("Random Seed"),
+        "target_col": ui("Target Column (blank = auto)"),
+    },
+    code=EXPORT["train_val_test"],
+)
 class TrainValTestHandler:
     class Config(BaseModel):
         val_size: float = 0.1
@@ -79,7 +106,21 @@ class TrainValTestHandler:
         )
 
 
-@register("cv_split")
+@node(
+    "cv_split", label="Cross-Validation Split", category="split",
+    description="K-Fold split — returns one fold as X/y train+test, ready for model nodes",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    fields={
+        "target_col": ui("Target Column (blank = auto)"),
+        "k": ui("K Folds", min=2),
+        "fold_index": ui("Test Fold Index (0 to K-1)", min=0),
+        "method": ui(),
+        "shuffle": ui(),
+        "random_state": ui("Random Seed"),
+    },
+    code=EXPORT["cv_split"],
+)
 class CvSplitHandler:
     class Config(BaseModel):
         target_col: str = ""
@@ -130,7 +171,16 @@ class CvSplitHandler:
         )
 
 
-@register("dataset_to_xy")
+@node(
+    "dataset_to_xy", label="Dataset → X, y", category="split",
+    description="Extract feature matrix X and target vector y from a dataset by column name — preserves row index for later joining",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("X_train", "X_train"), Port("y_train", "y_train")],
+    fields={
+        "target_col": ui("Target Column (blank = auto-detect last)"),
+    },
+    code=EXPORT["dataset_to_xy"],
+)
 class DatasetToXyHandler:
     class Config(BaseModel):
         target_col: str = ""
@@ -154,7 +204,16 @@ class DatasetToXyHandler:
         )
 
 
-@register("xy_to_dataset")
+@node(
+    "xy_to_dataset", label="X, y → Dataset", category="split",
+    description="Recombine feature matrix X and target vector y into a single dataset using index alignment",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "target_col": ui("Target Column Name"),
+    },
+    code=EXPORT["xy_to_dataset"],
+)
 class XyToDatasetHandler:
     class Config(BaseModel):
         target_col: str = "target"

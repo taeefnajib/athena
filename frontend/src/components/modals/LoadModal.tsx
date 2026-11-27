@@ -1,3 +1,4 @@
+import { fromPipelineSpec } from '../../lib/serialize'
 import { useRef, useState, useEffect } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { usePipelineStore } from '../../store/pipelineStore'
@@ -29,10 +30,8 @@ export function LoadModal() {
   }, [])
 
   const applySpec = (spec: PipelineSpec) => {
-    loadPipeline(
-      spec.nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config, status: 'idle' as const })),
-      spec.edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourcePort: e.source_port, targetPort: e.target_port })),
-    )
+    const { nodes, edges, meta } = fromPipelineSpec(spec)  // keeps v2 node policy and pipeline metadata
+    loadPipeline(nodes, edges, meta)
     showToast('Pipeline loaded', 'success')
     setShowLoadModal(false)
   }

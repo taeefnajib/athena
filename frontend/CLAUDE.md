@@ -105,40 +105,15 @@ Per-run state. Cleared at the start of every run. Shape:
 
 ## 5. The node registry
 
-`registry/nodeRegistry.ts` is the most important file in the frontend. It must mirror the backend's registry exactly for the fields below.
+Node specs come from the backend node SDK. `registry/nodeRegistry.ts` holds only the types (`NodeSpec`, `ConfigField`, …), the loaded `NODE_REGISTRY` / `CATEGORY_META`, and presentation helpers. `main.tsx` calls `loadNodeRegistry()` (`GET /api/nodes`) before the app renders and shows a "Couldn't reach the Athena backend" screen with Retry if it fails.
 
-```ts
-export type ConfigField =
-  | { id: string; label: string; type: 'text';     default: string }
-  | { id: string; label: string; type: 'number';   default: number; min?: number; max?: number; step?: number }
-  | { id: string; label: string; type: 'select';   default: string; options: string[] }
-  | { id: string; label: string; type: 'toggle';   default: boolean }
-  | { id: string; label: string; type: 'textarea'; default: string; mono?: boolean }
+- **Never hand-add node entries in the frontend.** Add or change a node with `@node` in the backend; the library and inspector forms follow automatically.
+- `PortType` and `NodeCategory` are open strings, because plugins can add new ones. Built-in categories use the `--cat-<id>` CSS variables; others get a stable colour from `categoryColor()`.
+- `getNodeGroups()` leaves out nodes with `available: false` (not implemented yet). They stay in `NODE_REGISTRY` so older pipelines that use them still load.
+- Each spec carries `exportable` / `export_note`, so the UI can say which nodes export to code.
+- Unit tests that need specs call `applyNodesResponse()` with a small fixture (see `registry/nodeRegistry.test.ts`).
 
-export type PortType =
-  | 'dataset' | 'train' | 'test' | 'val' | 'folds'
-  | 'model' | 'predictions' | 'report' | 'plot' | 'endpoint' | 'outliers'
-
-export type NodeCategory =
-  | 'data' | 'quality' | 'feature' | 'balance' | 'split'
-  | 'model' | 'advanced' | 'ensemble' | 'eval' | 'interp' | 'deploy' | 'monitor'
-
-export interface NodeSpec {
-  type: string                  // unique key, snake_case — matches backend
-  label: string
-  category: NodeCategory
-  description: string           // shown in tooltip + inspector header
-  inputs: { name: string; type: PortType }[]
-  outputs: { name: string; type: PortType }[]
-  config: ConfigField[]
-}
-
-export const NODE_REGISTRY: Record<string, NodeSpec> = { /* ... */ }
-```
-
-Connection validity = output port type === input port type. Implement in `lib/validation.ts`; pass to React Flow's `isValidConnection` prop.
-
-When adding a node: also add the matching backend handler in the same change. The starter set in the prototype (`csv_loader`, `imputer`, `scaler`, `train_test`, `rf`, `lin_reg`, `log_reg`, `metrics`, `conf_matrix`, `tfidf`, `feat_gen`, `residual`, `shap`) are the v1 must-haves. The full list from the product spec is the v1.x roadmap — don't ship them all at once if backends aren't ready.
+Connection validity is checked in `lib/validation.ts` against the loaded specs.
 
 ---
 

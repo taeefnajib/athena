@@ -36,4 +36,12 @@ class RunFinish(BaseModel):
     status: Literal["completed", "error", "cancelled"]
 
 
-RunEvent = NodeStart | NodeLog | NodeFinish | RunFinish
+class RunInfo(BaseModel):
+    """Run-level information from observers: tracking details, progress messages or warnings."""
+    type: Literal["run_info"] = "run_info"
+    tracking: dict[str, Any] | None = None
+    message: str | None = None
+    warning: str | None = None
+
+
+RunEvent = NodeStart | NodeLog | NodeFinish | RunFinish | RunInfo

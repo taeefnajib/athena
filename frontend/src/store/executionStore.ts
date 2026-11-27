@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ArtifactPreview, LogEntry, NodeFinishEvent, NodeStatus } from '../types/pipeline'
+import type { ArtifactPreview, LogEntry, NodeFinishEvent, NodeStatus, TrackingInfo } from '../types/pipeline'
 
 interface NodeRunState {
   status: NodeStatus
@@ -15,8 +15,11 @@ interface ExecutionState {
   logs: Record<string, LogEntry[]>
   previews: Record<string, ArtifactPreview>
   metrics: Record<string, Record<string, number>>
+  /** Set when the run is tracked (run_info event): which MLflow run it logged to. */
+  tracking: TrackingInfo | null
 
   reset: () => void
+  setTracking: (info: TrackingInfo) => void
   setStatus: (status: ExecutionState['status']) => void
   setRunId: (id: string) => void
   markRunning: (nodeId: string) => void
@@ -32,10 +35,12 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   logs: {},
   previews: {},
   metrics: {},
+  tracking: null,
+  setTracking: (info) => set({ tracking: info }),
 
   reset: () => set({
     runId: null, status: 'idle', currentNodeId: null,
-    nodeStates: {}, logs: {}, previews: {}, metrics: {},
+    nodeStates: {}, logs: {}, previews: {}, metrics: {}, tracking: null,
   }),
 
   setStatus: (status) => set({ status }),

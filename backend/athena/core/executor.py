@@ -1,19 +1,29 @@
+"""Run supervisor: lives in the API server, but never executes node code itself.
+
+Each run is handed to a worker process (athena/runtime/worker.py). The supervisor relays the
+worker's events to the broker and enforces what the worker can't be trusted to: per-node timeouts,
+hard cancellation after a grace period, and reporting a crashed worker as a clean error.
+"""
+from __future__ import annotations
+
+import multiprocessing as mp
 import time
-import traceback
+from dataclasses import dataclass
+from typing import Any
 
 import anyio
 import structlog
 
-from athena.schemas.pipeline import PipelineSpec
-from athena.schemas.events import NodeStart, NodeFinish, RunFinish, ErrorPayload
-from athena.core.dag import topo_sort, is_descendant_of
-from athena.core.handler import ExecutionContext, HandlerResult
-from athena.core.registry import get_handler
-from athena.core.events import EventBroker, broker as default_broker
-from athena.core.cache import ArtifactCache, compute_cache_key
 from athena.config import settings
+from athena.core.events import EventBroker, broker as default_broker
+from athena.runtime.worker import worker_main
+from athena.schemas.events import ErrorPayload, NodeFinish, NodeLog, NodeStart, RunFinish, RunInfo
+from athena.schemas.pipeline import PipelineSpec
 
 logger = structlog.get_logger()
+
+CANCEL_GRACE_S = 3.0   # after Stop, how long the in-flight node gets before the worker is killed
+POLL_S = 0.2
 
 _active_run_id: str | None = None
 _cancelled_runs: set[str] = set()
@@ -38,136 +48,182 @@ def reset_active_run() -> None:
     _cancelled_runs.clear()
 
 
+# ---- worker pool: one warm standby, a fresh process per run ------------------------------------
+
+@dataclass
+class _Worker:
+    process: Any
+    job_q: Any
+    events: Any        # receive end of the worker's event pipe
+    cancel_evt: Any
+
+
+class WorkerPool:
+    def __init__(self) -> None:
+        self._ctx = mp.get_context("spawn")
+        self._standby: _Worker | None = None
+
+    def _spawn(self) -> _Worker:
+        job_q, cancel_evt = self._ctx.Queue(), self._ctx.Event()
+        recv_end, send_end = self._ctx.Pipe(duplex=False)
+        p = self._ctx.Process(target=worker_main, args=(job_q, send_end, cancel_evt), daemon=True, name="athena-worker")
+        p.start()
+        send_end.close()  # only the worker writes; the parent sees EOF when the worker exits
+        return _Worker(p, job_q, recv_end, cancel_evt)
+
+    def acquire(self) -> _Worker:
+        w = self._standby if self._standby is not None and self._standby.process.is_alive() else None
+        self._standby = None
+        return w or self._spawn()
+
+    def prewarm(self) -> None:
+        """Start a standby worker so the next run doesn't wait for imports (~2 s)."""
+        if self._standby is None or not self._standby.process.is_alive():
+            self._standby = self._spawn()
+
+    def shutdown(self) -> None:
+        if self._standby is not None:
+            _stop(self._standby)
+            self._standby = None
+
+
+def _pending(w: _Worker) -> bool:
+    try:
+        return bool(w.events.poll(0))
+    except (EOFError, OSError):
+        return False
+
+
+def _stop(w: _Worker) -> None:
+    if w.process.is_alive():
+        w.process.kill()
+    w.process.join(timeout=5)
+    w.job_q.cancel_join_thread()
+    w.job_q.close()
+    w.events.close()
+
+
+pool = WorkerPool()
+
+
+# ---- events -----------------------------------------------------------------------------------
+
+_EVENT_TYPES: dict[str, Any] = {
+    "node_start": NodeStart, "node_log": NodeLog, "node_finish": NodeFinish, "run_finish": RunFinish,
+    "run_info": RunInfo,
+}
+
+
+def _to_event(msg: dict[str, Any]) -> Any:
+    return _EVENT_TYPES[msg["type"]].model_validate(msg)
+
+
+# ---- supervising one run ----------------------------------------------------------------------
+
 async def execute(
     spec: PipelineSpec,
     run_id: str,
     event_broker: EventBroker | None = None,
     start_from: list[str] | None = None,
+    prewarm_next: bool = True,
 ) -> None:
     global _active_run_id
     _active_run_id = run_id
-    if event_broker is None:
-        event_broker = default_broker
-
-    bound_log = logger.bind(run_id=run_id)
-
+    event_broker = event_broker or default_broker
+    log = logger.bind(run_id=run_id)
+    worker = pool.acquire()
     try:
-        await _run(spec, run_id, event_broker, start_from, bound_log)
-    except Exception as exc:
-        # Catch-all so the executor itself never silently swallows control flow
-        # without notifying the client.
-        bound_log.error("executor_crash", error=str(exc), tb=traceback.format_exc())
-        try:
-            await event_broker.publish(run_id, RunFinish(status="error"))
-        except Exception:
-            pass
+        if is_cancelled(run_id):
+            worker.cancel_evt.set()
+        worker.job_q.put({
+            "spec": spec.model_dump_json(), "run_id": run_id,
+            "start_from": start_from, "data_dir": str(settings.data_dir),
+        })
+        timeouts = {n.id: n.timeout_s or settings.node_timeout_s for n in spec.nodes}
+        await _supervise(worker, run_id, event_broker, log, timeouts)
     finally:
+        _stop(worker)
         _active_run_id = None
         _cancelled_runs.discard(run_id)
+        if prewarm_next:
+            pool.prewarm()
 
 
-async def _run(
-    spec: PipelineSpec,
-    run_id: str,
-    event_broker: EventBroker,
-    start_from: list[str] | None,
-    bound_log: structlog.BoundLogger,
-) -> None:
-    cache_dir = settings.data_dir / "cache" / run_id
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache = ArtifactCache(cache_dir)
-
-    nodes_dicts = [{"id": n.id} for n in spec.nodes]
-    edges_dicts = [{"source": e.source, "target": e.target} for e in spec.edges]
-
+def _terminate_tracked_run(tracking: dict[str, Any], run_status: str, log: Any) -> None:
     try:
-        order = topo_sort(nodes_dicts, edges_dicts)
-    except ValueError:
-        await event_broker.publish(run_id, RunFinish(status="error"))
-        return
+        from mlflow import MlflowClient
 
-    artifacts: dict[tuple[str, int], object] = {}
-    node_cache_keys: dict[str, str] = {}
+        from athena.tracking.session import mlflow_session
+        with mlflow_session(tracking.get("connection", "")) as dest:
+            MlflowClient(tracking_uri=dest.tracking_uri).set_terminated(
+                tracking["run_id"], status="KILLED" if run_status == "cancelled" else "FAILED")
+    except Exception as exc:  # best effort: never let tracking clean-up break the run lifecycle
+        log.warning("tracking_cleanup_failed", error=str(exc))
 
-    for node_id in order:
-        if is_cancelled(run_id):
-            await event_broker.publish(run_id, RunFinish(status="cancelled"))
-            return
 
-        node = spec.node(node_id)
+async def _supervise(w: _Worker, run_id: str, event_broker: EventBroker, log: Any, timeouts: dict[str, int]) -> None:
+    current: str | None = None          # node in flight
+    node_started = 0.0
+    cancel_asked: float | None = None
+    tracking: dict[str, Any] | None = None  # from run_info: the MLflow run to close if the worker dies
 
-        if start_from and not is_descendant_of(node_id, start_from, edges_dicts) and node_id not in start_from:
+    async def publish(event: Any) -> None:
+        await event_broker.publish(run_id, event)
+
+    async def abort(node_message: str, run_status: str) -> None:
+        if current is not None:
+            await publish(NodeFinish(node_id=current, status="error",
+                                     duration_ms=int((time.monotonic() - node_started) * 1000),
+                                     error=ErrorPayload(message=node_message)))
+        await publish(RunFinish(status=run_status))  # type: ignore[arg-type]
+        if tracking is not None:  # the worker died before it could close its MLflow run
+            await anyio.to_thread.run_sync(_terminate_tracked_run, tracking, run_status, log)
+
+    while True:
+        msg: dict[str, Any] | None = None
+        try:
+            if await anyio.to_thread.run_sync(w.events.poll, POLL_S):
+                msg = w.events.recv()
+        except (EOFError, OSError):  # the worker exited and the pipe is drained
+            msg = None
+
+        if msg is not None:
+            kind = msg["type"]
+            if kind == "_ready":
+                continue
+            if kind == "_crash":
+                log.error("engine_crash", error=msg["message"], tb=msg["traceback"])
+                await abort(f"Execution engine crashed: {msg['message']}", "error")
+                return
+            if kind == "_done":
+                return  # run_finish was already relayed
+            if kind == "run_info" and msg.get("tracking"):
+                tracking = msg["tracking"]
+            if kind == "node_start":
+                current, node_started = msg["node_id"], time.monotonic()
+            elif kind == "node_finish":
+                current = None
+            await publish(_to_event(msg))
+            if kind == "run_finish":
+                return
             continue
 
-        inputs: list[object] = []
-        for e in spec.edges:
-            if e.target == node_id:
-                key = (e.source, e.source_port)
-                if key in artifacts:
-                    while len(inputs) <= e.target_port:
-                        inputs.append(None)
-                    inputs[e.target_port] = artifacts[key]
-
-        parent_keys = [node_cache_keys.get(e.source, "") for e in spec.edges if e.target == node_id]
-        cache_key = compute_cache_key(node.type, node.config, parent_keys)
-        node_cache_keys[node_id] = cache_key
-
-        await event_broker.publish(run_id, NodeStart(node_id=node_id))
-        bound_log.info("node_start", node_id=node_id, node_type=node.type)
-
-        start_time = time.monotonic()
-
-        try:
-            handler = get_handler(node.type)
-        except KeyError:
-            err = ErrorPayload(message=f"Unknown node type: {node.type!r}", traceback="")
-            await event_broker.publish(run_id, NodeFinish(node_id=node_id, status="error", error=err))
-            await event_broker.publish(run_id, RunFinish(status="error"))
+        # No event this tick: enforce cancellation, timeouts and crashes.
+        now = time.monotonic()
+        if is_cancelled(run_id) and cancel_asked is None:
+            w.cancel_evt.set()
+            cancel_asked = now
+        if cancel_asked is not None and now - cancel_asked > CANCEL_GRACE_S:
+            log.warning("cancel_kill", node_id=current)
+            await abort("Cancelled: the node was stopped because it didn't finish after Stop.", "cancelled")
             return
-
-        cached = cache.get(cache_key)
-        if cached is not None:
-            result: HandlerResult = cached
-            bound_log.info("cache_hit", node_id=node_id)
-        else:
-            node_log = bound_log.bind(node_id=node_id)
-            ctx = ExecutionContext(
-                node_id=node_id,
-                node_type=node.type,
-                config=dict(node.config),
-                inputs=inputs,
-                run_id=run_id,
-                cache_dir=cache_dir,
-                logger=node_log,
-                _cancelled=lambda: is_cancelled(run_id),
-            )
-
-            try:
-                result = await anyio.to_thread.run_sync(lambda: handler(ctx))  # type: ignore[arg-type]
-                cache.set(cache_key, result)
-            except Exception as exc:
-                tb = traceback.format_exc()
-                err = ErrorPayload(message=str(exc), traceback=tb)
-                duration = int((time.monotonic() - start_time) * 1000)
-                await event_broker.publish(run_id, NodeFinish(
-                    node_id=node_id, status="error", duration_ms=duration, error=err,
-                ))
-                await event_broker.publish(run_id, RunFinish(status="error"))
-                bound_log.error("node_error", node_id=node_id, error=str(exc))
-                return
-
-        for i, art in enumerate(result.outputs):
-            artifacts[(node_id, i)] = art
-
-        duration = int((time.monotonic() - start_time) * 1000)
-        preview_data = result.preview.model_dump() if result.preview else None
-        await event_broker.publish(run_id, NodeFinish(
-            node_id=node_id, status="success",
-            duration_ms=duration,
-            preview=preview_data,
-            metrics=result.metrics,
-        ))
-        bound_log.info("node_success", node_id=node_id, duration_ms=duration)
-
-    await event_broker.publish(run_id, RunFinish(status="completed"))
-    bound_log.info("run_completed", run_id=run_id)
+        limit = timeouts.get(current, settings.node_timeout_s) if current is not None else None
+        if limit is not None and now - node_started > limit:
+            log.warning("node_timeout", node_id=current, timeout_s=limit)
+            await abort(f"Timed out after {limit} s (the node's timeout, or ATHENA_NODE_TIMEOUT_S).", "error")
+            return
+        if not w.process.is_alive() and not _pending(w):
+            code = w.process.exitcode
+            log.error("worker_died", exitcode=code)
+            await abort(f"The worker process exited unexpectedly (exit code {code}).", "error")
+            return
