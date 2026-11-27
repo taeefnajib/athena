@@ -319,6 +319,12 @@ Rules:
 - `GET /api/runs/{run}/artifacts/{node}/{port}?format=csv|parquet`: tables as CSV/Parquet, reports as JSON, models/transformers as joblib. `GET /api/runs/{run}/profile/{node}/{port}?target=`: the profile. Both 404 with `ARTIFACT_NOT_FOUND` once the run's folder is gone.
 - `athena/profiling.py` is pure pandas/sklearn: column kinds, statistics and histograms, insights (`severity`, `code`, `column`, `message`) and mutual information with the target. It samples frames over 100,000 rows (20,000 for mutual information) and returns strictly JSON-safe values (no NaN/inf).
 
+### Calibration and decision thresholds
+
+- `nodes/calibration.py`: Probability Calibration (`CalibratedClassifierCV`; `FrozenEstimator` on the validation set, else a clone over stratified k-fold on train), Calibration Curve, and Decision Threshold (wraps the fitted model in `FixedThresholdClassifier(FrozenEstimator(model))`, so probabilities are unchanged).
+- `_athena_tuning_scores` and `_athena_threshold` are self-contained functions that codegen copies verbatim into exports (`core/export_helpers.py`), so the search is identical in Athena and the script. Ties take the middle of the tied threshold range; precision is 0 where nothing is predicted positive.
+- Tuning never touches the test set. Without `X_val`/`y_val`, scores are out-of-fold predictions on the training set.
+
 ### AutoML
 
 `nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.

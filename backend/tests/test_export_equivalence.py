@@ -247,6 +247,29 @@ def test_deployment_nodes(tmp_path: Path):
     run_both(g2.spec(), tmp_path, skip={"tl"})  # transformer_load reads from Athena's data dir at runtime
 
 
+def test_calibration_and_threshold_nodes(tmp_path: Path):
+    g = G()
+    g.n("csv", "csv_loader", path=str(BACKEND / "data.csv"))
+    g.n("imp", "imputer", strategy="median"); g.e("csv", "imp")
+    g.n("tv", "train_val_test"); g.e("imp", "tv")
+    g.model("lr", "log_reg", "tv", test_ports=(4, 5))
+    g.model("rf", "rf", "tv", test_ports=(4, 5), n_estimators=20)
+    for nid, ntype, base, cfg, with_val in [
+        ("cal_v", "calibrate", "lr", {"method": "sigmoid"}, True),
+        ("cal_c", "calibrate", "rf", {"method": "isotonic", "cv": 3}, False),
+        ("thr_v", "threshold_tune", "lr", {"objective": "min_cost", "cost_fn": 4}, True),
+        ("thr_c", "threshold_tune", "rf", {"objective": "max_precision_at_recall", "constraint": 0.85, "cv": 4}, False),
+    ]:
+        g.n(nid, ntype, **cfg); g.e(base, nid, 0, 0); g.e("tv", nid, 0, 1); g.e("tv", nid, 1, 2)
+        if with_val:
+            g.e("tv", nid, 2, 3); g.e("tv", nid, 3, 4)
+        g.n(f"{nid}_m", "metrics"); g.e(nid, f"{nid}_m", 0, 0); g.e("tv", f"{nid}_m", 4, 1); g.e("tv", f"{nid}_m", 5, 2)
+    g.n("cc", "calibration_curve", strategy="quantile", n_bins=5); g.e("cal_v", "cc", 0, 0); g.e("tv", "cc", 4, 1); g.e("tv", "cc", 5, 2)
+    ns = run_both(g.spec(), tmp_path)
+    assert (tmp_path / "cc_calibration.png").exists()
+    assert 0 < ns["report_thr_v"]["threshold"] < 1 and ns["report_thr_c"]["recall"] >= 0.85
+
+
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""

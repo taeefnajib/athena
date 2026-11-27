@@ -51,7 +51,13 @@ export async function fetchProfile(runId: string, nodeId: string, port: number, 
   const qs = target ? `?${new URLSearchParams({ target })}` : ''
   const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/profile/${encodeURIComponent(nodeId)}/${port}${qs}`)
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body?.detail?.detail ?? `Profiling failed (${res.status})`)
+  if (!res.ok) {
+    if (res.status === 404 && body?.detail === 'Not Found') {
+      // FastAPI's bare 404: the route itself is missing, so the backend is older than this frontend.
+      throw new Error('The backend is running an older version without profiling. Restart it (npm run dev), then run the pipeline again.')
+    }
+    throw new Error(body?.detail?.detail ?? `Profiling failed (${res.status})`)
+  }
   return body as Profile
 }
 
