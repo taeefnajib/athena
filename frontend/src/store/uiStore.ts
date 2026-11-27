@@ -11,6 +11,7 @@ interface UiState {
   showTrackingModal: boolean
   showRunsModal: boolean
   inspectorTab: 'settings' | 'preview' | 'logs' | 'metrics'
+  profileTarget: { nodeId: string; port: number } | null
   toast: { msg: string; type: 'info' | 'success' | 'error' | 'warn' } | null
 
   setTheme: (theme: UiState['theme']) => void
@@ -22,6 +23,7 @@ interface UiState {
   setShowTrackingModal: (show: boolean) => void
   setShowRunsModal: (show: boolean) => void
   setInspectorTab: (tab: UiState['inspectorTab']) => void
+  setProfileTarget: (target: UiState['profileTarget']) => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
   clearToast: () => void
 }
@@ -38,6 +40,7 @@ export const useUiStore = create<UiState>()(
       showTrackingModal: false,
       showRunsModal: false,
       inspectorTab: 'settings',
+      profileTarget: null,
       toast: null,
 
       setTheme: (theme) => set({ theme }),
@@ -49,6 +52,7 @@ export const useUiStore = create<UiState>()(
       setShowTrackingModal: (show) => set({ showTrackingModal: show }),
       setShowRunsModal: (show) => set({ showRunsModal: show }),
       setInspectorTab: (tab) => set({ inspectorTab: tab }),
+      setProfileTarget: (target) => set({ profileTarget: target }),
       showToast: (msg, type = 'info') => {
         const toast = { msg, type }
         set({ toast })

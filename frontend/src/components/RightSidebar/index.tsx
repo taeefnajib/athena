@@ -7,6 +7,7 @@ import { useConnectionStore } from '../../store/connectionStore'
 import { NODE_REGISTRY, CATEGORY_META, type NodeSpec, type ConfigField } from '../../registry/nodeRegistry'
 import { api } from '../../lib/api'
 import { ExecutionPolicy } from './ExecutionPolicy'
+import { OutputActions } from './OutputActions'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
 type HpParam = { key: string; values: string }
@@ -91,6 +92,7 @@ function Inspector({ nodeId, nodeType, config }: { nodeId: string; nodeType: str
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {inspectorTab === 'settings' && <SettingsTab spec={spec} config={config} nodeId={nodeId} onChange={updateConfig} />}
         {inspectorTab === 'settings' && <ExecutionPolicy nodeId={nodeId} />}
+        {inspectorTab === 'preview'  && <OutputActions nodeId={nodeId} nodeType={nodeType} />}
         {inspectorTab === 'preview'  && <PreviewTab preview={preview} />}
         {inspectorTab === 'logs'     && <LogsTab logs={logs} />}
         {inspectorTab === 'metrics'  && <MetricsTab metrics={metrics} />}

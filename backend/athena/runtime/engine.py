@@ -146,8 +146,9 @@ def run_spec(
                     wait = backoff * 2 ** (attempt - 1)
                     node_log.warning(f"Attempt {attempt} of {attempts} failed: {exc}. Retrying in {wait:g} s")
                     time.sleep(wait)
-            if node.cache:
-                cache.set(cache_key, result)
+            # Always kept for this run (downloads, profiling); node.cache only decides whether it is *reused*.
+            cache.set(cache_key, result)
+        cache.record(node_id, cache_key)
 
         for i, art in enumerate(result.outputs):
             artifacts[(node_id, i)] = art

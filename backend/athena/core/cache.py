@@ -39,6 +39,13 @@ class ArtifactCache:
         except Exception:
             pass
 
+    def record(self, node_id: str, key: str) -> None:
+        """Remember which cache entry holds a node's outputs (for downloads and profiling after the run)."""
+        index_path = self.dir / "index.json"
+        index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else {}
+        index[node_id] = key
+        index_path.write_text(json.dumps(index), encoding="utf-8")
+
     def clear(self) -> None:
         for f in self.dir.glob("*.pkl"):
             try:

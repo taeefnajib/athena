@@ -44,6 +44,11 @@
       --cat-interp:     oklch(68% 0.18 320);
       --cat-deploy:     oklch(68% 0.18 15);
       --cat-monitor:    oklch(68% 0.18 170);
+
+      /* Single-series chart marks (validated: >= 3:1 vs the panel surface in each theme) */
+      --chart-mark:       oklch(66% 0.16 225);
+      --chart-mark-hover: oklch(74% 0.15 225);
+      --chart-grid:       rgba(255,255,255,0.08);
     }
 
     html[data-theme="light"] {
@@ -58,6 +63,9 @@
       --text-muted:#9aa0b8;
       --shadow:    0 4px 24px rgba(0,0,0,0.1);
       --shadow-lg: 0 8px 40px rgba(0,0,0,0.15);
+      --chart-mark:       oklch(58% 0.17 225);
+      --chart-mark-hover: oklch(50% 0.17 225);
+      --chart-grid:       rgba(0,0,0,0.08);
     }
 
     html, body, #root {

@@ -129,7 +129,7 @@ npm run dev
 1. **Build a pipeline** — drag nodes from the left sidebar onto the canvas, connect output ports to input ports.
 2. **Configure nodes** — click any node to open the inspector panel on the right; edit settings in the Settings tab.
 3. **Run** — click **Run** (or press `Ctrl/⌘ + Enter`). Nodes light up green as they execute.
-4. **Inspect results** — click a completed node and switch to the **Data Preview**, **Logs**, or **Metrics** tabs.
+4. **Inspect results** — click a completed node and switch to the **Data Preview**, **Logs**, or **Metrics** tabs. In **Data Preview**, **Profile** opens a full profile of any table output, and **↓** downloads any output (tables as CSV, models as joblib files).
 5. **Export code** — click **Export Code** in the top bar to download a standalone Python script, a Jupyter notebook (one cell per node), or the pipeline JSON. The code needs only the libraries it imports, follows your graph exactly, and is tested to produce the same results as running the pipeline in Athena. Plots are saved as PNG files next to the script.
 6. **Save / Load** — click **Save** (or `Ctrl/⌘ + S`) and enter a file path. Load pipelines via `POST /api/pipelines/load` or by adding a load button (coming in v1.1).
 
@@ -157,6 +157,16 @@ Pull JSON from any REST API with the **API Fetch** node (`uv sync --extra api`, 
 - Pagination: *auto* (dlt detects it; check the Logs tab), *page number*, *offset*, *cursor*, *next URL* in the body, or a *Link header*. *Max pages* caps the number of requests (10 by default).
 - Nested objects become columns like `address__city`; nested lists are left out and listed in the Logs tab, or keep everything as JSON with *Nested data → json*.
 - dlt's anonymous telemetry is switched off, in Athena and in exported scripts.
+
+### Data profiling
+
+After a run, click a node, open **Data Preview** and press **Profile** next to a table output. The profile shows:
+
+- an overview (rows, columns by type, missing cells, duplicate rows, memory) and each column's type, missing share, unique values, distribution and summary;
+- **findings**: empty or constant columns, heavy missingness, ID-like columns, high-cardinality categories, strong skew, duplicate rows, a missing or imbalanced target, and columns that look like they leak the target;
+- the **target**'s distribution and which columns carry information about it (mutual information). The target is a column named `target` unless you pick another.
+
+Tables over 100,000 rows are profiled on a random sample, and the header says so. Download the table as CSV or Parquet from the same window. Outputs are kept until Athena restarts.
 
 ### More models and smarter tuning
 
