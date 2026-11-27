@@ -31,6 +31,8 @@ TYPE_PREFIX = {
     "transformer": "transformer", "hpconfig": "hp", "pipeline": "pipeline", "outliers": "outliers",
 }
 IMPORT_RE = re.compile(r"^(import \S|from \S+ import \S)")
+# Lines that must run before certain imports (e.g. dlt reads its telemetry switch when it loads).
+PRELUDE = {"dlt": ["import os", 'os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")  # no telemetry from dlt']}
 
 
 def safe(name: str) -> str:
@@ -114,6 +116,12 @@ def _header(sections: list[Section]) -> tuple[list[str], list[str]]:
     for line in [i for s in sections for i in s.imports] + helper_imports:
         if line not in imports:
             imports.append(line)
+    for module, prelude in PRELUDE.items():
+        first = next((i for i, ln in enumerate(imports) if re.match(rf"^(import|from) {module}(\.|\s|$)", ln)), None)
+        if first is not None:
+            rest = [ln for ln in imports if ln not in prelude]
+            first = next(i for i, ln in enumerate(rest) if re.match(rf"^(import|from) {module}(\.|\s|$)", ln))
+            imports = rest[:first] + prelude + rest[first:]
     return imports, helper_src
 
 
