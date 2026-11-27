@@ -3,13 +3,24 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.artifacts import TextPreview, MetricsPreview
 from athena.utils.dataframes import get_target_column
 
 
-@register("drift_detect")
+@node(
+    "drift_detect", label="Drift Detection", category="monitor",
+    description="Detect feature and concept drift",
+    inputs=[Port("dataset", "dataset"), Port("reference", "dataset")],
+    outputs=[Port("report", "report")],
+    fields={
+        "method": ui(),
+        "threshold": ui(),
+    },
+    code=EXPORT["drift_detect"],
+)
 class DriftDetectHandler:
     class Config(BaseModel):
         method: Literal["PSI", "KS Test", "Chi-squared"] = "KS Test"
@@ -69,7 +80,17 @@ class DriftDetectHandler:
         )
 
 
-@register("perf_tracker")
+@node(
+    "perf_tracker", label="Performance Tracker", category="monitor",
+    description="Track model performance over time",
+    inputs=[Port("model", "model"), Port("dataset", "dataset")],
+    outputs=[Port("report", "report")],
+    fields={
+        "metric": ui(),
+        "window": ui("Window (days)"),
+    },
+    code=EXPORT["perf_tracker"],
+)
 class PerfTrackerHandler:
     class Config(BaseModel):
         metric: Literal["accuracy", "f1", "rmse"] = "accuracy"

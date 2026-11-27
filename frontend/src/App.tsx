@@ -7,6 +7,9 @@ import { ExportModal } from './components/modals/ExportModal'
 import { TemplatesModal } from './components/modals/TemplatesModal'
 import { SaveModal } from './components/modals/SaveModal'
 import { LoadModal } from './components/modals/LoadModal'
+import { ConnectionsModal } from './components/modals/ConnectionsModal'
+import { TrackingModal } from './components/modals/TrackingModal'
+import { RunsModal } from './components/modals/RunsModal'
 import { Toaster } from './components/ui/Toast'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useTheme } from './hooks/useTheme'
@@ -17,7 +20,7 @@ import { useUiStore } from './store/uiStore'
 
 function AppInner() {
   const { run, stop } = useRunPipeline()
-  const { showExportModal, showTemplatesModal, showSaveModal, showLoadModal } = useUiStore()
+  const { showExportModal, showTemplatesModal, showSaveModal, showLoadModal, showConnectionsModal, showTrackingModal, showRunsModal } = useUiStore()
 
   useTheme()
   useKeyboardShortcuts(run, stop)
@@ -36,6 +39,9 @@ function AppInner() {
       {showTemplatesModal && <TemplatesModal />}
       {showSaveModal && <SaveModal />}
       {showLoadModal && <LoadModal />}
+      {showConnectionsModal && <ConnectionsModal />}
+      {showTrackingModal && <TrackingModal />}
+      {showRunsModal && <RunsModal />}
     </div>
   )
 }

@@ -3,12 +3,23 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe, get_target_column
 
 
-@register("smote")
+@node(
+    "smote", label="SMOTE", category="balance",
+    description="Oversample minority class synthetically",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "k_neighbors": ui("K Neighbors"),
+        "random_state": ui("Random Seed"),
+    },
+    code=EXPORT["smote"],
+)
 class SmoteHandler:
     class Config(BaseModel):
         k_neighbors: int = 5
@@ -38,7 +49,17 @@ class SmoteHandler:
         )
 
 
-@register("undersample")
+@node(
+    "undersample", label="Undersampling", category="balance",
+    description="Reduce majority class samples",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "strategy": ui(),
+        "ratio": ui(),
+    },
+    code=EXPORT["undersample"],
+)
 class UndersampleHandler:
     class Config(BaseModel):
         strategy: Literal["random", "tomek", "enn"] = "random"
@@ -75,7 +96,16 @@ class UndersampleHandler:
         )
 
 
-@register("oversample")
+@node(
+    "oversample", label="Oversampling", category="balance",
+    description="Duplicate minority class samples",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "strategy": ui(),
+    },
+    code=EXPORT["oversample"],
+)
 class OversampleHandler:
     class Config(BaseModel):
         strategy: Literal["random", "adasyn"] = "random"
@@ -105,7 +135,16 @@ class OversampleHandler:
         )
 
 
-@register("class_weight")
+@node(
+    "class_weight", label="Class Weight Adjuster", category="balance",
+    description="Balance via class weights",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "mode": ui(),
+    },
+    code=EXPORT["class_weight"],
+)
 class ClassWeightHandler:
     class Config(BaseModel):
         mode: Literal["balanced", "auto", "custom"] = "balanced"

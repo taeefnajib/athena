@@ -4,7 +4,8 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.utils.dataframes import preview_dataframe
 from athena.schemas.artifacts import ModelPreview, TextPreview
@@ -47,10 +48,23 @@ def _parse_values(spec: str) -> list:
     return result
 
 
-@register("hp_tune")
+@node(
+    "hp_tune", label="HP Tuning Config", category="advanced",
+    description="Emit a hyperparameter search config to connect to any model node",
+    outputs=[Port("hp_config", "hpconfig")],
+    fields={
+        "method": ui(help="Optuna samples smartly (TPE): a value list of more than three numbers, such as 10-200, is searched as a range. Needs the optuna extra."),
+        "scoring": ui("Scoring Metric", widget="select", options=["accuracy", "f1_weighted", "f1_macro", "roc_auc", "r2", "neg_root_mean_squared_error", "neg_mean_absolute_error"]),
+        "n_iter": ui("Iterations / trials (not Grid)", min=1),
+        "cv": ui("CV Folds", min=2),
+        "n_jobs": ui("Parallel Jobs (-1 = all cores)", min=-1),
+        "params": ui("Parameter Grid", widget="hp_params"),
+    },
+    code=EXPORT["hp_tune"],
+)
 class HpTuneHandler:
     class Config(BaseModel):
-        method: Literal["Grid", "Random", "Bayesian"] = "Random"
+        method: Literal["Grid", "Random", "Bayesian", "Optuna"] = "Random"
         scoring: str = "accuracy"
         n_iter: int = 25
         cv: int = 5
@@ -100,7 +114,16 @@ class HpTuneHandler:
         )
 
 
-@register("pipeline_wrap")
+@node(
+    "pipeline_wrap", label="Pipeline Wrapper", category="advanced",
+    description="Wrap preprocessing + model into a pipeline",
+    inputs=[Port("dataset", "dataset"), Port("model", "model")],
+    outputs=[Port("pipeline", "pipeline")],
+    fields={
+        "memory": ui("Cache Pipeline"),
+    },
+    code=EXPORT["pipeline_wrap"],
+)
 class PipelineWrapHandler:
     class Config(BaseModel):
         memory: bool = False
@@ -117,12 +140,24 @@ class PipelineWrapHandler:
         )
 
 
-@register("custom_code")
+@node(
+    "custom_code", label="Custom Code Node", category="advanced",
+    description="Execute custom Python snippet",
+    inputs=[Port("dataset", "dataset")],
+    outputs=[Port("dataset", "dataset")],
+    fields={
+        "code": ui("Python Code", widget="textarea", mono=True),
+    },
+    code=EXPORT["custom_code"],
+)
 class CustomCodeHandler:
     class Config(BaseModel):
         code: str = "# df is your DataFrame\ndf['new_col'] = df['col1'] * 2\nreturn df"
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        from athena.config import settings
+        if not settings.allow_custom_code:
+            raise ValueError("Custom code is disabled (ATHENA_ALLOW_CUSTOM_CODE=false).")
         cfg = self.Config(**ctx.config)
         df: pd.DataFrame = ctx.inputs[0].copy()
         lines = ["def _user_fn(df, pd, np):"] + [f"    {ln}" for ln in cfg.code.splitlines()]
@@ -139,12 +174,3 @@ class CustomCodeHandler:
         return HandlerResult(outputs=[result], preview=preview_dataframe(result))
 
 
-def _stub(type_name: str):
-    @register(type_name)
-    class StubHandler:
-        def __call__(self, ctx: ExecutionContext) -> HandlerResult:
-            raise NotImplementedError(f"{type_name} is not yet implemented in v1.")
-    StubHandler.__name__ = f"{type_name.title().replace('_', '')}Handler"
-
-
-_stub("automl")

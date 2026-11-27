@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { NODE_GROUPS, type NodeSpec } from '../../registry/nodeRegistry'
+import { getNodeGroups, type NodeSpec } from '../../registry/nodeRegistry'
 
 export function LeftSidebar() {
   const [search, setSearch] = useState('')
@@ -7,8 +7,9 @@ export function LeftSidebar() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
-    if (!q) return NODE_GROUPS
-    return NODE_GROUPS
+    const groups = getNodeGroups()
+    if (!q) return groups
+    return groups
       .map(g => ({ ...g, nodes: g.nodes.filter(n => n.label.toLowerCase().includes(q) || n.description.toLowerCase().includes(q)) }))
       .filter(g => g.nodes.length > 0)
   }, [search])

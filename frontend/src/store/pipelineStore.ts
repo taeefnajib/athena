@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { NODE_REGISTRY } from '../registry/nodeRegistry'
-import type { PipelineSpec, NodeStatus } from '../types/pipeline'
+import { DEFAULT_META, pickPolicy, type NodePolicy, type PipelineMeta, type PipelineSpec, type NodeStatus } from '../types/pipeline'
 
 export interface PipelineNode {
   id: string
@@ -8,6 +8,8 @@ export interface PipelineNode {
   position: { x: number; y: number }
   config: Record<string, unknown>
   status: NodeStatus
+  /** Execution policy (spec v2): timeout, retry, cache, runtime, resources. */
+  policy?: NodePolicy
 }
 
 export interface PipelineEdge {
@@ -86,10 +88,32 @@ const NLP_EDGES: PipelineEdge[] = [
   { id: 'te9', source: 't3', sourcePort: 2, target: 't6', targetPort: 1 }, // X_test → shap
 ]
 
+const AUTOML_NODES: PipelineNode[] = [
+  { id: 'a1', type: 'csv_loader',  position: { x: 60,   y: 100 }, status: 'idle', config: { path: 'data.csv', sep: ',', header: true, encoding: 'utf-8' } },
+  { id: 'a2', type: 'imputer',     position: { x: 320,  y: 100 }, status: 'idle', config: { strategy: 'mean', fill_value: '0', cols: '' } },
+  { id: 'a3', type: 'train_test',  position: { x: 580,  y: 100 }, status: 'idle', config: { test_size: 0.2, random_state: 42, stratify: false } },
+  { id: 'a4', type: 'automl',      position: { x: 840,  y: 80  }, status: 'idle', config: { task: 'auto', metric: 'auto', time_budget: 30, n_trials: 0, estimators: '', eval_method: 'auto', random_state: 42 } },
+  { id: 'a5', type: 'metrics',     position: { x: 1100, y: 60  }, status: 'idle', config: { task: 'classification', average: 'weighted' } },
+  { id: 'a6', type: 'conf_matrix', position: { x: 1100, y: 220 }, status: 'idle', config: { normalize: 'none', cmap: 'Blues' } },
+]
+const AUTOML_EDGES: PipelineEdge[] = [
+  { id: 'ae1', source: 'a1', sourcePort: 0, target: 'a2', targetPort: 0 },
+  { id: 'ae2', source: 'a2', sourcePort: 0, target: 'a3', targetPort: 0 },
+  { id: 'ae3', source: 'a3', sourcePort: 0, target: 'a4', targetPort: 0 }, // X_train -> automl
+  { id: 'ae4', source: 'a3', sourcePort: 1, target: 'a4', targetPort: 1 }, // y_train -> automl
+  { id: 'ae5', source: 'a4', sourcePort: 0, target: 'a5', targetPort: 0 }, // best model -> metrics
+  { id: 'ae6', source: 'a3', sourcePort: 2, target: 'a5', targetPort: 1 },
+  { id: 'ae7', source: 'a3', sourcePort: 3, target: 'a5', targetPort: 2 },
+  { id: 'ae8', source: 'a4', sourcePort: 0, target: 'a6', targetPort: 0 }, // best model -> confusion matrix
+  { id: 'ae9', source: 'a3', sourcePort: 2, target: 'a6', targetPort: 1 },
+  { id: 'ae10', source: 'a3', sourcePort: 3, target: 'a6', targetPort: 2 },
+]
+
 export const TEMPLATES = {
   classification: { nodes: STARTER_NODES, edges: STARTER_EDGES },
   regression: { nodes: REGRESSION_NODES, edges: REGRESSION_EDGES },
   nlp: { nodes: NLP_NODES, edges: NLP_EDGES },
+  automl: { nodes: AUTOML_NODES, edges: AUTOML_EDGES },
 }
 
 let nodeCounter = 100
@@ -107,12 +131,16 @@ interface PipelineState {
   addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => void
   removeNode: (id: string) => void
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void
+  updateNodePolicy: (id: string, policy: NodePolicy) => void
   moveNode: (id: string, position: { x: number; y: number }) => void
   addEdge: (edge: PipelineEdge) => void
   removeEdge: (id: string) => void
   setSelectedNode: (id: string | null) => void
   setSelectedEdge: (id: string | null) => void
-  loadPipeline: (nodes: PipelineNode[], edges: PipelineEdge[]) => void
+  /** Pipeline name, description and metadata (e.g. tracking settings). */
+  meta: PipelineMeta
+  setMeta: (patch: Partial<PipelineMeta>) => void
+  loadPipeline: (nodes: PipelineNode[], edges: PipelineEdge[], meta?: PipelineMeta) => void
   clear: () => void
   undo: () => void
   redo: () => void
@@ -156,6 +184,10 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     })
   },
 
+  updateNodePolicy: (id, policy) => {
+    set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, policy: pickPolicy(policy) } : n), isDirty: true }))
+  },
+
   updateNodeConfig: (id, config) => {
     set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, config } : n), isDirty: true }))
   },
@@ -184,13 +216,16 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   setSelectedNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
   setSelectedEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
 
-  loadPipeline: (nodes, edges) => {
+  meta: DEFAULT_META,
+  setMeta: (patch) => set(s => ({ meta: { ...s.meta, ...patch }, isDirty: true })),
+
+  loadPipeline: (nodes, edges, meta) => {
     // Advance nodeCounter past any loaded node IDs so new drops never collide.
     for (const n of nodes) {
       const m = n.id.match(/^n_(\d+)$/)
       if (m) nodeCounter = Math.max(nodeCounter, parseInt(m[1], 10))
     }
-    set(s => ({ nodes, edges, selectedNodeId: null, selectedEdgeId: null, isDirty: false, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(s, nodes, edges) }))
+    set(s => ({ nodes, edges, meta: meta ?? DEFAULT_META, selectedNodeId: null, selectedEdgeId: null, isDirty: false, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(s, nodes, edges) }))
   },
 
   clear: () => {
@@ -228,11 +263,13 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   },
 
   toPipelineSpec: () => {
-    const { nodes, edges } = get()
+    const { nodes, edges, meta } = get()
     return {
-      version: 1,
-      name: 'untitled',
-      nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config })),
+      version: 2,
+      name: meta.name || 'untitled',
+      description: meta.description,
+      metadata: meta.metadata,
+      nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, config: n.config, ...pickPolicy(n.policy ?? {}) })),
       edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, source_port: e.sourcePort, target_port: e.targetPort })),
     }
   },

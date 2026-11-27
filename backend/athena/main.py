@@ -10,10 +10,14 @@ from athena.api.runs import router as runs_router
 from athena.api.nodes import router as nodes_router
 from athena.api.ws import router as ws_router
 from athena.api.files import router as files_router
-from athena.core.executor import reset_active_run
+from athena.api.connections import router as connections_router
+from athena.api.tracking import router as tracking_router
+from athena.core.executor import pool, reset_active_run
 
-# Import all nodes to trigger registration
-import athena.nodes  # noqa: F401
+# Register built-in nodes/connectors and installed plugins
+from athena.plugins import load_plugins
+
+load_plugins()
 
 
 @asynccontextmanager
@@ -25,7 +29,9 @@ async def lifespan(app: FastAPI):
     (settings.data_dir / "autosave").mkdir(parents=True, exist_ok=True)
     (settings.data_dir / "uploads").mkdir(parents=True, exist_ok=True)
     settings.pipelines_dir.mkdir(parents=True, exist_ok=True)
+    pool.prewarm()  # first run shouldn't wait for the worker's imports
     yield
+    pool.shutdown()
     # Cleanup cache on shutdown
     cache_dir = settings.data_dir / "cache"
     if cache_dir.exists():
@@ -51,6 +57,8 @@ app.include_router(runs_router)
 app.include_router(nodes_router)
 app.include_router(ws_router)
 app.include_router(files_router)
+app.include_router(connections_router)
+app.include_router(tracking_router)
 
 
 @app.get("/")

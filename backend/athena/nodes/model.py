@@ -9,7 +9,8 @@ from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-from athena.core.registry import register
+from athena.nodes.export import EXPORT
+from athena.sdk import Port, node, ui
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.artifacts import ModelPreview
 
@@ -43,6 +44,8 @@ def _tune_model(
 
     ctx.logger.info("Starting HP search", method=method, scoring=scoring, cv=cv, params=list(param_grid.keys()))
 
+    if method == "Optuna":
+        return _optuna_search(X_train, y_train, model_obj, param_grid, scoring, n_iter, cv, n_jobs, ctx)
     if method == "Grid":
         search: Any = GridSearchCV(model_obj, param_grid, cv=cv, n_jobs=n_jobs, scoring=scoring)
     elif method == "Bayesian":
@@ -72,6 +75,63 @@ def _tune_model(
     )
 
 
+OPTUNA_HINT = "Optuna isn't installed. Run: pip install 'athena-backend[optuna]' (in backend/: uv sync --extra optuna)"
+
+
+def _optuna_space(values: list[Any]) -> tuple[str, Any]:
+    """More than three numbers = a range to search continuously; otherwise a set of choices."""
+    numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
+    if numeric and len(values) > 3:
+        lo, hi = min(values), max(values)
+        if all(isinstance(v, int) for v in values):
+            return "int", (int(lo), int(hi))
+        return "float", (float(lo), float(hi), lo > 0 and hi / lo >= 100)  # log scale for wide positive ranges
+    return "categorical", list(values)
+
+
+def _optuna_search(
+    X_train: pd.DataFrame, y_train: pd.Series, model_obj: object, param_grid: dict[str, list[Any]],
+    scoring: str, n_trials: int, cv: int, n_jobs: int, ctx: ExecutionContext,
+) -> tuple[object, ModelPreview]:
+    import importlib.util
+    if importlib.util.find_spec("optuna") is None:
+        raise RuntimeError(OPTUNA_HINT)
+    import optuna
+    from sklearn.base import clone
+    from sklearn.model_selection import cross_val_score
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    space = {k: _optuna_space(v) for k, v in param_grid.items()}
+    ctx.logger.info("Optuna search space", **{k: f"{kind} {spec}" for k, (kind, spec) in space.items()})
+
+    def objective(trial: Any) -> float:
+        params: dict[str, Any] = {}
+        for name, (kind, spec) in space.items():
+            if kind == "int":
+                params[name] = trial.suggest_int(name, *spec)
+            elif kind == "float":
+                params[name] = trial.suggest_float(name, spec[0], spec[1], log=spec[2])
+            else:
+                params[name] = trial.suggest_categorical(name, spec)
+        model = clone(model_obj).set_params(**params)  # type: ignore[attr-defined]
+        return float(cross_val_score(model, X_train, y_train, cv=cv, scoring=scoring, n_jobs=n_jobs).mean())
+
+    def report(study: Any, trial: Any) -> None:
+        if trial.value is not None:
+            ctx.logger.info(f"Trial {trial.number + 1}/{n_trials}: {scoring}={trial.value:.4f} (best {study.best_value:.4f})")
+        if ctx.cancelled():
+            study.stop()
+
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(objective, n_trials=n_trials, callbacks=[report])
+    best = clone(model_obj).set_params(**study.best_params)  # type: ignore[attr-defined]
+    best.fit(X_train, y_train)  # type: ignore[attr-defined]
+    ctx.logger.info("Optuna search done", best_score=round(study.best_value, 4), params=study.best_params)
+    summary = (f"Optuna ({len(study.trials)} trials) best CV {scoring}: {study.best_value:.4f}\n"
+               f"Best params: {study.best_params}\n\n{best!r}")
+    return best, ModelPreview(summary=summary)
+
+
 def _fit_or_tune(
     X_train: pd.DataFrame,
     y_train: pd.Series,
@@ -84,7 +144,18 @@ def _fit_or_tune(
     return _fit_model(X_train, y_train, model_obj, ctx)
 
 
-@register("lin_reg")
+
+
+@node(
+    "lin_reg", label="Linear Regression", category="model",
+    description="Ordinary least squares regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "fit_intercept": ui("Fit Intercept"),
+    },
+    code=EXPORT["lin_reg"],
+)
 class LinRegHandler:
     class Config(BaseModel):
         fit_intercept: bool = True
@@ -97,7 +168,20 @@ class LinRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("log_reg")
+
+
+@node(
+    "log_reg", label="Logistic Regression", category="model",
+    description="Binary or multiclass classification",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "C": ui("C (Regularization)"),
+        "solver": ui(),
+        "max_iter": ui("Max Iterations"),
+    },
+    code=EXPORT["log_reg"],
+)
 class LogRegHandler:
     class Config(BaseModel):
         C: float = 1.0
@@ -116,12 +200,26 @@ class LogRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("rf")
+
+
+@node(
+    "rf", label="Random Forest", category="model",
+    description="Ensemble of decision trees",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "max_depth": ui("Max Depth"),
+        "max_features": ui("Max Features"),
+        "random_state": ui("Random Seed"),
+    },
+    code=EXPORT["rf"],
+)
 class RfHandler:
     class Config(BaseModel):
         n_estimators: int = 100
         max_depth: int = 10
-        max_features: str = "sqrt"
+        max_features: Literal["sqrt", "log2"] = "sqrt"
         random_state: int = 42
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -141,7 +239,18 @@ class RfHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("dtree")
+@node(
+    "dtree", label="Decision Tree", category="model",
+    description="Decision tree classifier/regressor",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "max_depth": ui("Max Depth"),
+        "min_samples_split": ui("Min Samples Split"),
+        "criterion": ui(),
+    },
+    code=EXPORT["dtree"],
+)
 class DtreeHandler:
     class Config(BaseModel):
         max_depth: int = 5
@@ -158,13 +267,26 @@ class DtreeHandler:
                 max_depth=cfg.max_depth,
                 min_samples_split=cfg.min_samples_split,
                 criterion=cfg.criterion,
+                random_state=42,  # ties between equally good splits are broken randomly otherwise
             ),
             ctx,
         )
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("xgb")
+@node(
+    "xgb", label="XGBoost", category="model",
+    description="Gradient boosting — high performance",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "learning_rate": ui("Learning Rate"),
+        "max_depth": ui("Max Depth"),
+        "subsample": ui(),
+    },
+    code=EXPORT["xgb"],
+)
 class XgbHandler:
     class Config(BaseModel):
         n_estimators: int = 100
@@ -195,7 +317,18 @@ class XgbHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("svm")
+@node(
+    "svm", label="Support Vector Machine", category="model",
+    description="SVM for classification or regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "C": ui(),
+        "kernel": ui(),
+        "gamma": ui(),
+    },
+    code=EXPORT["svm"],
+)
 class SvmHandler:
     class Config(BaseModel):
         C: float = 1.0
@@ -208,13 +341,24 @@ class SvmHandler:
         y_train: pd.Series = ctx.inputs[1]
         model, preview = _fit_or_tune(
             X_train, y_train,
-            SVC(C=cfg.C, kernel=cfg.kernel, gamma=cfg.gamma, probability=True),
+            SVC(C=cfg.C, kernel=cfg.kernel, gamma=cfg.gamma, probability=True, random_state=42),
             ctx,
         )
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("knn")
+@node(
+    "knn", label="KNN", category="model",
+    description="K-Nearest Neighbors",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_neighbors": ui("Neighbors"),
+        "metric": ui(),
+        "weights": ui(),
+    },
+    code=EXPORT["knn"],
+)
 class KnnHandler:
     class Config(BaseModel):
         n_neighbors: int = 5
@@ -237,7 +381,17 @@ class KnnHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("nb")
+@node(
+    "nb", label="Naive Bayes", category="model",
+    description="Probabilistic classifier",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "variant": ui(),
+        "var_smoothing": ui("Var Smoothing"),
+    },
+    code=EXPORT["nb"],
+)
 class NbHandler:
     class Config(BaseModel):
         variant: Literal["GaussianNB", "MultinomialNB", "BernoulliNB"] = "GaussianNB"
@@ -257,7 +411,20 @@ class NbHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("mlp")
+@node(
+    "mlp", label="Neural Network (MLP)", category="model",
+    description="Multilayer perceptron",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "layers": ui("Hidden Layers"),
+        "activation": ui(),
+        "lr": ui("Learning Rate"),
+        "epochs": ui(),
+        "batch_size": ui("Batch Size"),
+    },
+    code=EXPORT["mlp"],
+)
 class MlpHandler:
     class Config(BaseModel):
         layers: str = "128, 64, 32"
@@ -289,7 +456,17 @@ class MlpHandler:
 
 # ── REGRESSION MODELS ─────────────────────────────────────────────────────────
 
-@register("ridge")
+@node(
+    "ridge", label="Ridge Regression", category="model",
+    description="L2-regularized linear regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "alpha": ui("Alpha (Regularization)"),
+        "fit_intercept": ui("Fit Intercept"),
+    },
+    code=EXPORT["ridge"],
+)
 class RidgeHandler:
     class Config(BaseModel):
         alpha: float = 1.0
@@ -307,7 +484,17 @@ class RidgeHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("lasso")
+@node(
+    "lasso", label="Lasso Regression", category="model",
+    description="L1-regularized regression — performs feature selection",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "alpha": ui("Alpha (Regularization)"),
+        "max_iter": ui("Max Iterations"),
+    },
+    code=EXPORT["lasso"],
+)
 class LassoHandler:
     class Config(BaseModel):
         alpha: float = 1.0
@@ -325,12 +512,24 @@ class LassoHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("rf_reg")
+@node(
+    "rf_reg", label="Random Forest Regressor", category="model",
+    description="Ensemble of decision trees for regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "max_depth": ui("Max Depth"),
+        "max_features": ui("Max Features"),
+        "random_state": ui("Random Seed"),
+    },
+    code=EXPORT["rf_reg"],
+)
 class RfRegHandler:
     class Config(BaseModel):
         n_estimators: int = 100
         max_depth: int = 10
-        max_features: str = "sqrt"
+        max_features: Literal["sqrt", "log2"] = "sqrt"
         random_state: int = 42
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
@@ -350,7 +549,19 @@ class RfRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("xgb_reg")
+@node(
+    "xgb_reg", label="XGBoost Regressor", category="model",
+    description="Gradient boosting for regression — high performance",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "learning_rate": ui("Learning Rate"),
+        "max_depth": ui("Max Depth"),
+        "subsample": ui(),
+    },
+    code=EXPORT["xgb_reg"],
+)
 class XgbRegHandler:
     class Config(BaseModel):
         n_estimators: int = 100
@@ -380,7 +591,18 @@ class XgbRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("dtree_reg")
+@node(
+    "dtree_reg", label="Decision Tree Regressor", category="model",
+    description="Decision tree for regression tasks",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "max_depth": ui("Max Depth"),
+        "min_samples_split": ui("Min Samples Split"),
+        "criterion": ui(),
+    },
+    code=EXPORT["dtree_reg"],
+)
 class DtreeRegHandler:
     class Config(BaseModel):
         max_depth: int = 5
@@ -397,13 +619,26 @@ class DtreeRegHandler:
                 max_depth=cfg.max_depth,
                 min_samples_split=cfg.min_samples_split,
                 criterion=cfg.criterion,
+                random_state=42,  # ties between equally good splits are broken randomly otherwise
             ),
             ctx,
         )
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("svr")
+@node(
+    "svr", label="Support Vector Regressor", category="model",
+    description="SVR for regression tasks",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "C": ui(),
+        "kernel": ui(),
+        "epsilon": ui(),
+        "gamma": ui(),
+    },
+    code=EXPORT["svr"],
+)
 class SvrHandler:
     class Config(BaseModel):
         C: float = 1.0
@@ -423,7 +658,18 @@ class SvrHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("knn_reg")
+@node(
+    "knn_reg", label="KNN Regressor", category="model",
+    description="K-Nearest Neighbors for regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_neighbors": ui("Neighbors"),
+        "metric": ui(),
+        "weights": ui(),
+    },
+    code=EXPORT["knn_reg"],
+)
 class KnnRegHandler:
     class Config(BaseModel):
         n_neighbors: int = 5
@@ -446,7 +692,20 @@ class KnnRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("mlp_reg")
+@node(
+    "mlp_reg", label="Neural Network Regressor", category="model",
+    description="Multilayer perceptron for regression",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "layers": ui("Hidden Layers"),
+        "activation": ui(),
+        "lr": ui("Learning Rate"),
+        "epochs": ui(),
+        "batch_size": ui("Batch Size"),
+    },
+    code=EXPORT["mlp_reg"],
+)
 class MlpRegHandler:
     class Config(BaseModel):
         layers: str = "128, 64, 32"
@@ -476,7 +735,20 @@ class MlpRegHandler:
         return HandlerResult(outputs=[model], preview=preview)
 
 
-@register("gb_reg")
+@node(
+    "gb_reg", label="Gradient Boosting Regressor", category="model",
+    description="Gradient boosting ensemble for regression (scikit-learn)",
+    inputs=[Port("X_train", "X_train"), Port("y_train", "y_train"), Port("X_val", "X_val", optional=True), Port("y_val", "y_val", optional=True), Port("hp_config", "hpconfig", optional=True)],
+    outputs=[Port("model", "model")],
+    fields={
+        "n_estimators": ui("Estimators"),
+        "learning_rate": ui("Learning Rate"),
+        "max_depth": ui("Max Depth"),
+        "subsample": ui(),
+        "random_state": ui("Random Seed"),
+    },
+    code=EXPORT["gb_reg"],
+)
 class GbRegHandler:
     class Config(BaseModel):
         n_estimators: int = 100
