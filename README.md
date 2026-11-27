@@ -185,6 +185,27 @@ Install the extra once: `cd backend && uv sync --extra mlflow`. Then click **Tra
 - The **Register Model** node registers a trained model (with an optional alias such as `champion`); **Load Registered Model** brings one back into any pipeline, by alias or version.
 - To browse the local store in MLflow's own UI: `uv run mlflow ui --backend-store-uri sqlite:///$HOME/.athena/mlflow/mlflow.db`.
 
+### Forecasting
+
+The **Time Series** nodes work on one series: a date column and a numeric target at a regular frequency (daily, weekly, monthly, hourly...).
+
+- **Time Series Split** sorts by date and holds out the most recent rows. It never shuffles, so the model never sees the future.
+- **Forecaster** fits on the training rows and forecasts the test period, or *Horizon* steps past the end when no test set is connected. Methods:
+  - *seasonal_naive*: repeats the last season. The baseline every model should beat.
+  - *ets*: exponential smoothing (Holt-Winters), with additive or damped trend and additive or multiplicative seasonality.
+  - *arima*: seasonal ARIMA with the orders you set.
+  - *gbm_lags*: gradient boosting on lagged changes, forecasting step by step.
+
+  It outputs the forecast table (with a prediction interval, except for *gbm_lags*) and, with a test set, MAE, RMSE, MAPE, sMAPE, MASE (below 1 beats the seasonal-naive baseline) and interval coverage. *ets* and *arima* need `uv sync --extra stats`.
+- **Backtest** repeats fit-and-forecast over several cut-off dates (rolling origin) and averages the scores: a more reliable estimate than one test window.
+
+The season length comes from the frequency (7 for daily, 12 for monthly, 52 for weekly, 24 for hourly) unless you set it. Repeated dates, missing values and gaps are reported with what to do; forecast several series by filtering to one first.
+
+### Clustering
+
+- **K-Means** (set *Clusters* to 0 to pick k by silhouette), **Hierarchical Clustering** and **DBSCAN** (finds clusters of any shape and marks outliers as -1) add a `cluster` column to the table. Features are the numeric columns, standardised by default so no column dominates by its units. K-Means also outputs a model that assigns new rows to clusters.
+- **Cluster Evaluation** reports silhouette (higher is better), Davies-Bouldin (lower is better) and Calinski-Harabasz scores, draws the clusters on their first two principal components, and outputs a profile: each cluster's size and average feature values.
+
 ### Calibration and decision thresholds
 
 For classifiers whose probabilities or cut-off matter (risk scores, fraud, churn):
@@ -222,8 +243,10 @@ Click **Templates** in the top bar to load a pre-built pipeline. Each template's
 | Regression Pipeline | CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals | `backend/regression_data.csv` (300 rows, 3 numeric features + continuous `target`) |
 | NLP Pipeline | CSV → TF-IDF → Train/Test → Logistic Regression → Metrics + SHAP | `backend/nlp_data.csv` (300 short review-style sentences + binary `target`) |
 | AutoML Classification | CSV → Imputer → Train/Test → AutoML Search (30 s) → Metrics + Confusion Matrix | `backend/data.csv` (needs the `automl` extra) |
+| Sales Forecasting | CSV → Time Series Split → ETS and a seasonal-naive baseline, plus a 4-fold Backtest | `backend/timeseries_data.csv` (two years of daily `sales`: trend, weekly and yearly seasonality; ETS needs the `stats` extra) |
+| Customer Segmentation | CSV → K-Means (k chosen by silhouette) → Cluster Evaluation | `backend/customers_data.csv` (600 customers, 5 numeric features, 4 underlying segments) |
 
-All three datasets include a handful of missing values so the Missing Value Imputer node has real work to do, and each is regenerable via the script the datasets were originally produced with (`np.random.default_rng(42)`, so results are reproducible).
+The classification, regression and NLP datasets include a handful of missing values so the Missing Value Imputer node has real work to do, and each is regenerable via the script the datasets were originally produced with (`np.random.default_rng(42)`, so results are reproducible).
 
 ---
 

@@ -172,7 +172,7 @@ Required vars (match the prototype):
 --shadow, --shadow-lg, --radius, --radius-lg,
 --cat-data, --cat-quality, --cat-feature, --cat-balance, --cat-split,
 --cat-model, --cat-advanced, --cat-ensemble, --cat-eval, --cat-interp,
---cat-deploy, --cat-monitor
+--cat-deploy, --cat-monitor, --cat-cluster, --cat-forecast
 ```
 
 Don't hardcode hex colors anywhere in components. If you need a color that isn't a var, add the var first.

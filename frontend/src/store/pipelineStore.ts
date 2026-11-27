@@ -109,11 +109,39 @@ const AUTOML_EDGES: PipelineEdge[] = [
   { id: 'ae10', source: 'a3', sourcePort: 3, target: 'a6', targetPort: 2 },
 ]
 
+const FORECAST_NODES: PipelineNode[] = [
+  { id: 'f1', type: 'csv_loader', position: { x: 60,  y: 140 }, status: 'idle', config: { path: 'timeseries_data.csv', sep: ',', header: true, encoding: 'utf-8' } },
+  { id: 'f2', type: 'ts_split',   position: { x: 340, y: 60  }, status: 'idle', config: { date_col: 'date', test_periods: 28, test_fraction: 0.2 } },
+  { id: 'f3', type: 'forecaster', position: { x: 640, y: 0   }, status: 'idle', config: { target: 'sales', method: 'ets' } },
+  { id: 'f4', type: 'forecaster', position: { x: 640, y: 200 }, status: 'idle', config: { target: 'sales', method: 'seasonal_naive' } },
+  { id: 'f5', type: 'backtest',   position: { x: 340, y: 300 }, status: 'idle', config: { target: 'sales', method: 'ets', folds: 4, horizon: 28 } },
+]
+const FORECAST_EDGES: PipelineEdge[] = [
+  { id: 'fe1', source: 'f1', sourcePort: 0, target: 'f2', targetPort: 0 },
+  { id: 'fe2', source: 'f2', sourcePort: 0, target: 'f3', targetPort: 0 }, // train -> ETS
+  { id: 'fe3', source: 'f2', sourcePort: 1, target: 'f3', targetPort: 1 }, // test -> ETS
+  { id: 'fe4', source: 'f2', sourcePort: 0, target: 'f4', targetPort: 0 }, // train -> seasonal naive (the baseline)
+  { id: 'fe5', source: 'f2', sourcePort: 1, target: 'f4', targetPort: 1 },
+  { id: 'fe6', source: 'f1', sourcePort: 0, target: 'f5', targetPort: 0 }, // full series -> backtest
+]
+
+const CLUSTER_NODES: PipelineNode[] = [
+  { id: 'k1', type: 'csv_loader',   position: { x: 60,  y: 100 }, status: 'idle', config: { path: 'customers_data.csv', sep: ',', header: true, encoding: 'utf-8' } },
+  { id: 'k2', type: 'kmeans',       position: { x: 340, y: 100 }, status: 'idle', config: { n_clusters: 0, k_max: 8 } },
+  { id: 'k3', type: 'cluster_eval', position: { x: 620, y: 100 }, status: 'idle', config: {} },
+]
+const CLUSTER_EDGES: PipelineEdge[] = [
+  { id: 'ke1', source: 'k1', sourcePort: 0, target: 'k2', targetPort: 0 },
+  { id: 'ke2', source: 'k2', sourcePort: 0, target: 'k3', targetPort: 0 }, // labelled rows -> evaluation
+]
+
 export const TEMPLATES = {
   classification: { nodes: STARTER_NODES, edges: STARTER_EDGES },
   regression: { nodes: REGRESSION_NODES, edges: REGRESSION_EDGES },
   nlp: { nodes: NLP_NODES, edges: NLP_EDGES },
   automl: { nodes: AUTOML_NODES, edges: AUTOML_EDGES },
+  forecasting: { nodes: FORECAST_NODES, edges: FORECAST_EDGES },
+  clustering: { nodes: CLUSTER_NODES, edges: CLUSTER_EDGES },
 }
 
 let nodeCounter = 100

@@ -19,6 +19,8 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "balance":  {"label": "Data Balancing",   "icon": "⊜"},
     "split":    {"label": "Data Split",       "icon": "⋈"},
     "model":    {"label": "Models",           "icon": "◉"},
+    "cluster":  {"label": "Clustering",       "icon": "⁂"},
+    "forecast": {"label": "Time Series",      "icon": "◷"},
     "advanced": {"label": "Advanced ML",      "icon": "◎"},
     "ensemble": {"label": "Ensemble",         "icon": "⊕"},
     "eval":     {"label": "Evaluation",       "icon": "◇"},

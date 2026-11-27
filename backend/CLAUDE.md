@@ -330,6 +330,14 @@ Rules:
 - `nodes/stats.py` (extra `athena-backend[stats]`): `sm_ols` and `sm_logit`. `_StatsOLS` / `_StatsLogit` (on `_StatsBase(BaseEstimator)`) are real scikit-learn estimators, so `clone()`, Metrics, Calibration and Decision Threshold work with them. They're self-contained and copied verbatim into exports; `HELPER_DEPS` in `core/export_helpers.py` pulls in a helper's base class.
 - PR-AUC is `average_precision_score` for the second class (binary) or the macro average over classes; the Metrics node and `pr_curve` (in `nodes/calibration.py`) agree.
 
+### Forecasting and clustering
+
+- Categories `forecast` ("Time Series") and `cluster` ("Clustering") are built in (`core/registry.py`); the frontend has `--cat-forecast` / `--cat-cluster`.
+- `nodes/forecast_core.py` holds the forecasting logic as self-contained `_athena_*` functions (series parsing, season inference, the four methods, metrics, forecast table, backtest, chronological split). `nodes/forecast.py` adds config, logs and plots. Exports call the same functions, copied verbatim; `HELPER_DEPS` pulls in their dependencies transitively.
+- One series per table, regular frequency; `_athena_series` refuses duplicates, missing values and gaps with a fix. Text date columns may arrive as pandas' string dtype, not `object`: check both (`_athena_date_col`).
+- ETS uses statsmodels' `ETSModel` on a `pd.Series` (its intervals break on a bare ndarray in 0.15). `gbm_lags` models first differences recursively with `HistGradientBoostingRegressor(random_state=0)`; it has no intervals. Metrics omit keys that are undefined (MAPE with all-zero actuals, MASE with a flat train) instead of sending NaN.
+- `nodes/cluster.py`: K-Means/Hierarchical/DBSCAN add a `cluster` column (noise = -1); silhouette excludes noise and samples 5,000 rows with a fixed seed. Cluster colours follow the cluster id.
+
 ### AutoML
 
 `nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.

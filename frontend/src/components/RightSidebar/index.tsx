@@ -8,6 +8,7 @@ import { NODE_REGISTRY, CATEGORY_META, type NodeSpec, type ConfigField } from '.
 import { api } from '../../lib/api'
 import { ExecutionPolicy } from './ExecutionPolicy'
 import { OutputActions } from './OutputActions'
+import { formatMetric } from '../../lib/formatMetric'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
 type HpParam = { key: string; values: string }
@@ -516,7 +517,7 @@ function MetricsTab({ metrics }: { metrics: Record<string, number> }) {
         {Object.entries(metrics).map(([k, v]) => (
           <div key={k} style={{ background: 'var(--card)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text)', lineHeight: 1.2 }}>
-              {typeof v === 'number' ? (v <= 1 ? (v * 100).toFixed(1) + '%' : v.toFixed(4)) : v}
+              {typeof v === 'number' ? formatMetric(k, v) : v}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k}</div>
           </div>
