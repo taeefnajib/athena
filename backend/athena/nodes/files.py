@@ -92,7 +92,7 @@ class DuckDbSql:
 
 
 @node(
-    "storage_loader", label="Cloud File Loader", category="data",
+    "storage_loader", reusable=False, label="Cloud File Loader", category="data",
     description="Load a CSV, Parquet, JSON or Excel file from S3, GCS, Azure or a folder, using a saved storage connection",
     outputs=[Port("dataset", "dataset")],
     fields={

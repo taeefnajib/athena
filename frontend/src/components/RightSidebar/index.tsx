@@ -9,11 +9,12 @@ import { api } from '../../lib/api'
 import { ExecutionPolicy } from './ExecutionPolicy'
 import { OutputActions } from './OutputActions'
 import { formatMetric } from '../../lib/formatMetric'
+import { RunFromHere } from './RunFromHere'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
 type HpParam = { key: string; values: string }
 
-export function RightSidebar() {
+export function RightSidebar({ onRunFrom }: { onRunFrom: (nodeId: string) => void }) {
   const selectedNodeId = usePipelineStore(s => s.selectedNodeId)
   const node = usePipelineStore(s => s.nodes.find(n => n.id === selectedNodeId))
 
@@ -28,7 +29,7 @@ export function RightSidebar() {
           transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
           style={{ overflow: 'hidden', flexShrink: 0, height: '100%' }}
         >
-          <Inspector nodeId={node.id} nodeType={node.type} config={node.config} />
+          <Inspector nodeId={node.id} nodeType={node.type} config={node.config} onRunFrom={onRunFrom} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -38,7 +39,7 @@ export function RightSidebar() {
 const EMPTY_LOGS: LogEntry[] = []
 const EMPTY_METRICS: Record<string, number> = {}
 
-function Inspector({ nodeId, nodeType, config }: { nodeId: string; nodeType: string; config: Record<string, unknown> }) {
+function Inspector({ nodeId, nodeType, config, onRunFrom }: { nodeId: string; nodeType: string; config: Record<string, unknown>; onRunFrom: (nodeId: string) => void }) {
   const { inspectorTab, setInspectorTab } = useUiStore()
   const nodeState = useExecutionStore(s => s.nodeStates[nodeId])
   const preview = useExecutionStore(s => s.previews[nodeId])
@@ -72,7 +73,12 @@ function Inspector({ nodeId, nodeType, config }: { nodeId: string; nodeType: str
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: st.color }} />
           <span style={{ fontSize: 11, color: st.color }}>{st.label}</span>
-          <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{nodeId.slice(0, 8)}</span>
+          {nodeState?.status === 'success' && nodeState.cached && (
+            <span title="Reused from an earlier run: this node's settings, the nodes upstream and its input files are unchanged"
+                  style={{ fontSize: 10, color: 'var(--text-dim)', padding: '1px 6px', borderRadius: 99, border: '1px solid var(--border2)' }}>cached</span>
+          )}
+          <RunFromHere nodeId={nodeId} onRunFrom={onRunFrom} />
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{nodeId.slice(0, 8)}</span>
         </div>
         {nodeState?.error && (
           <div style={{ marginTop: 8, padding: '6px 8px', background: 'var(--error)20', border: '1px solid var(--error)40', borderRadius: 6, fontSize: 11, color: 'var(--error)' }}>

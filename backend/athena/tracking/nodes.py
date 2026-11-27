@@ -20,7 +20,7 @@ ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,254}$")
 
 
 @node(
-    "mlflow_register", label="Register Model", category="registry",
+    "mlflow_register", reusable=False, label="Register Model", category="registry",
     description="Register a trained model in the MLflow Model Registry (the pipeline's tracking server, or the local store)",
     inputs=[Port("model", "model")], outputs=[Port("report", "report")],
     fields={
@@ -88,7 +88,7 @@ def _model_uri(name: str, version: str, alias: str) -> str:
 
 
 @node(
-    "mlflow_load", label="Load Registered Model", category="registry",
+    "mlflow_load", reusable=False, label="Load Registered Model", category="registry",
     description="Load a model from the MLflow Model Registry by alias or version",
     outputs=[Port("model", "model")],
     fields={

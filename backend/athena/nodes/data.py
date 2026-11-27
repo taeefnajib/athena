@@ -266,7 +266,7 @@ class ManualInputHandler:
 
 
 @node(
-    "db_connector", label="SQL Query", category="data",
+    "db_connector", reusable=False, label="SQL Query", category="data",
     description="Run a SQL query against a saved database connection",
     outputs=[Port("dataset", "dataset")],
     fields={

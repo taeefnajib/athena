@@ -15,7 +15,7 @@ from athena.config import settings
 
 
 @node(
-    "csv_export", label="CSV Export", category="deploy",
+    "csv_export", reusable=False, label="CSV Export", category="deploy",
     description="Save dataset to CSV file",
     inputs=[Port("dataset", "dataset")],
     fields={
@@ -44,7 +44,7 @@ class CsvExportHandler:
 
 
 @node(
-    "model_saver", label="Model Saver", category="deploy",
+    "model_saver", reusable=False, label="Model Saver", category="deploy",
     description="Serialize model with pickle/joblib",
     inputs=[Port("model", "model")],
     fields={
@@ -112,7 +112,7 @@ class PredictHandler:
 
 
 @node(
-    "report_gen", label="Report Generator", category="deploy",
+    "report_gen", reusable=False, label="Report Generator", category="deploy",
     description="Generate PDF/HTML/Jupyter summary report",
     inputs=[Port("report", "report")],
     fields={
@@ -248,7 +248,7 @@ class ReportGenHandler:
 
 
 @node(
-    "transformer_save", label="Transformer Save", category="deploy",
+    "transformer_save", reusable=False, label="Transformer Save", category="deploy",
     description="Serialize a fitted scaler or encoder to disk for reuse",
     inputs=[Port("transformer", "transformer"), Port("dataset", "dataset")],
     outputs=[Port("dataset", "dataset")],
@@ -285,7 +285,7 @@ class TransformerSaveHandler:
 
 
 @node(
-    "transformer_load", label="Transformer Load", category="deploy",
+    "transformer_load", reusable=False, label="Transformer Load", category="deploy",
     description="Load a saved transformer and apply it to a dataset",
     inputs=[Port("dataset", "dataset")],
     outputs=[Port("dataset", "dataset")],

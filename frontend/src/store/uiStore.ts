@@ -12,6 +12,8 @@ interface UiState {
   showRunsModal: boolean
   inspectorTab: 'settings' | 'preview' | 'logs' | 'metrics'
   profileTarget: { nodeId: string; port: number } | null
+  /** Nodes a pending "Run from here" would execute, highlighted on the canvas while hovering the button. */
+  runPreview: string[] | null
   toast: { msg: string; type: 'info' | 'success' | 'error' | 'warn' } | null
 
   setTheme: (theme: UiState['theme']) => void
@@ -24,6 +26,7 @@ interface UiState {
   setShowRunsModal: (show: boolean) => void
   setInspectorTab: (tab: UiState['inspectorTab']) => void
   setProfileTarget: (target: UiState['profileTarget']) => void
+  setRunPreview: (ids: string[] | null) => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
   clearToast: () => void
 }
@@ -41,6 +44,7 @@ export const useUiStore = create<UiState>()(
       showRunsModal: false,
       inspectorTab: 'settings',
       profileTarget: null,
+      runPreview: null,
       toast: null,
 
       setTheme: (theme) => set({ theme }),
@@ -53,6 +57,7 @@ export const useUiStore = create<UiState>()(
       setShowRunsModal: (show) => set({ showRunsModal: show }),
       setInspectorTab: (tab) => set({ inspectorTab: tab }),
       setProfileTarget: (target) => set({ profileTarget: target }),
+      setRunPreview: (ids) => set({ runPreview: ids }),
       showToast: (msg, type = 'info') => {
         const toast = { msg, type }
         set({ toast })

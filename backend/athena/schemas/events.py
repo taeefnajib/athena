@@ -29,6 +29,8 @@ class NodeFinish(BaseModel):
     preview: Any | None = None
     metrics: dict[str, float] = {}
     error: ErrorPayload | None = None
+    cached: bool = False
+    """True when the node's result was reused from an earlier run instead of recomputed."""
 
 
 class RunFinish(BaseModel):

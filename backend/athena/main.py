@@ -1,4 +1,7 @@
 import shutil
+from pathlib import Path
+
+import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,14 +35,21 @@ async def lifespan(app: FastAPI):
     pool.prewarm()  # first run shouldn't wait for the worker's imports
     yield
     pool.shutdown()
-    # Cleanup cache on shutdown
-    cache_dir = settings.data_dir / "cache"
-    if cache_dir.exists():
+    clear_cache(settings.data_dir / "cache", keep_store=settings.keep_cache)
+
+
+def clear_cache(cache_dir: Path, keep_store: bool) -> None:
+    """On shutdown: drop per-run folders (their run ids mean nothing after a restart) and, unless
+    ATHENA_KEEP_CACHE is on, the shared store of node results too."""
+    if not cache_dir.exists():
+        return
+    for child in cache_dir.iterdir():
+        if keep_store and child.name == "store":
+            continue
         try:
-            shutil.rmtree(cache_dir)
-            cache_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+        except OSError as exc:  # a file still open elsewhere: leave it for the next shutdown
+            structlog.get_logger().warning("cache_cleanup_failed", path=str(child), error=str(exc))
 
 
 app = FastAPI(title="Athena Backend", version="0.1.0", lifespan=lifespan)

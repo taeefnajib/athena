@@ -80,6 +80,9 @@ class NodeMeta:
     Values: id, var, src, src_model, src_test, plus every config field (defaults filled in)."""
     export_note: str | None = None
     """Why the node has no export template. Exactly one of ``code`` / ``export_note`` is set."""
+    reusable: bool = True
+    """False for nodes with side effects (writing files, registering models) or live sources (databases,
+    APIs): they run on every run instead of reusing a cached result from an earlier one."""
     available: bool = True
     unavailable_reason: str | None = None
     runtime: str = "python"
@@ -106,6 +109,7 @@ def node(
     available: bool = True,
     unavailable_reason: str | None = None,
     runtime: str = "python",
+    reusable: bool = True,
 ) -> Callable[[H], H]:
     """Register a handler class as a node.
 
@@ -126,7 +130,7 @@ def node(
             inputs=tuple(inputs), outputs=tuple(outputs),
             config=getattr(cls, "Config", None), fields=dict(fields or {}),
             code=code, export_note=export_note,
-            available=available, unavailable_reason=unavailable_reason, runtime=runtime,
+            available=available, unavailable_reason=unavailable_reason, runtime=runtime, reusable=reusable,
         )
         cls.meta = meta  # type: ignore[attr-defined]
         register_node(meta, cls())
@@ -230,6 +234,7 @@ def node_spec(meta: NodeMeta) -> dict[str, Any]:
         "exportable": meta.code is not None,
         "export_note": meta.export_note,
         "available": meta.available,
+        "reusable": meta.reusable,
         "unavailable_reason": meta.unavailable_reason,
         "runtime": meta.runtime,
     }

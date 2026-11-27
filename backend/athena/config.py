@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path.home() / ".athena"
     node_timeout_s: int = 300
     cache_max_gb: float = 2.0
+    keep_cache: bool = False
+    """Keep cached node results across restarts (ATHENA_KEEP_CACHE). Off: the cache is cleared when Athena stops."""
     log_level: str = "INFO"
     allow_custom_code: bool = True
 

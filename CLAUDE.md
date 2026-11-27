@@ -176,7 +176,8 @@ When adding a new node type:
 3. Server emits messages in this order, one per node, in topological order:
    - `{ "type": "node_start",   "node_id": "n1" }`
    - `{ "type": "node_log",     "node_id": "n1", "level": "info", "msg": "..." }` (zero or more)
-   - `{ "type": "node_finish",  "node_id": "n1", "status": "success", "preview": {...}, "metrics": {...}, "duration_ms": 1234 }`
+   - `{ "type": "node_finish",  "node_id": "n1", "status": "success", "preview": {...}, "metrics": {...}, "duration_ms": 1234, "cached": false }`
+     - `cached: true` means the result was reused from an earlier run instead of recomputed.
      - or `{ "type": "node_finish", "node_id": "n1", "status": "error", "error": { "message": "...", "traceback": "..." } }`
 4. After the last node: `{ "type": "run_finish", "status": "completed" | "error" }`.
    - At any point, observers may send `{ "type": "run_info", "tracking": {...} | null, "message": "..." | null, "warning": "..." | null }`. When the pipeline is tracked, the first one carries the MLflow run (`run_id`, `experiment`, `experiment_id`, `destination`, `url`). Warnings mean tracking had a problem; they never fail the run.
@@ -215,8 +216,8 @@ Backend bugs (the executor itself failing) close the WS with code 1011. Frontend
 ## 5. Execution semantics
 
 - **Topological order** — Kahn's algorithm. If a cycle is detected, reject the run with HTTP 400 before opening the WS.
-- **Caching** — each node's output is keyed by a hash of `(node.type, node.config, hash(upstream artifacts))`. On re-run, skip handlers whose key is unchanged. The cache lives in `~/.athena/cache/` and is purged on app close (configurable).
-- **Partial runs** — `POST /api/pipelines/run` accepts an optional `start_from: [node_id, ...]`. The executor reuses cached upstream artifacts and only runs from the specified nodes downward. The frontend exposes this as "Run from selected node".
+- **Caching** — each node's output is keyed by a hash of `(node.type, node.config, upstream keys, fingerprint of local input files)` and shared across runs in `~/.athena/cache/store/`. On re-run, handlers whose key is cached are skipped (`node_finish.cached: true`). Nodes declared `reusable=False` (side effects, live sources) and nodes with `cache: false` always execute; their key is salted with a digest of what they produced, so downstream nodes recompute exactly when that output changes. The store is LRU-trimmed to `ATHENA_CACHE_MAX_GB` after each run and purged on app close unless `ATHENA_KEEP_CACHE=true`.
+- **Partial runs** — `POST /api/pipelines/run` accepts an optional `start_from: [node_id, ...]`. Those nodes and their descendants re-run; their ancestors are reused from the cache (or computed if missing); unrelated branches are skipped. The frontend exposes this as "Run from here" in the inspector, highlighting the nodes that will run while hovering.
 - **Concurrency** — single-pipeline-at-a-time for v1. Reject a second run with HTTP 409 while one is in flight. Nodes execute sequentially in topo order; parallelism within a level is a v2 concern.
 - **Resource limits** — wrap each handler in a soft timeout (default 5 minutes, configurable per node). On timeout, mark error and continue cleanup.
 

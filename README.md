@@ -158,6 +158,17 @@ Pull JSON from any REST API with the **API Fetch** node (`uv sync --extra api`, 
 - Nested objects become columns like `address__city`; nested lists are left out and listed in the Logs tab, or keep everything as JSON with *Nested data → json*.
 - dlt's anonymous telemetry is switched off, in Athena and in exported scripts.
 
+### Re-running fast: the cache and "Run from here"
+
+- **Unchanged nodes aren't recomputed.** When you run again, every node whose settings, upstream nodes and input files are unchanged reuses its earlier result; it shows a **cached** tag and says so in its Logs tab. Change a node and only it and the nodes after it run again; edit the CSV file and everything that depends on it re-runs.
+- Nodes that write files, register models, or read from databases, APIs, cloud storage or custom code always run, since the outside world may have changed. If what they return is unchanged, the nodes after them still come from the cache. Turn **Cache** off in a node's execution settings to make it always run.
+- **Run from here** (in the inspector) re-runs the selected node and everything after it, taking the nodes before it from the cache. Hover the button to see which nodes will run.
+- The cache is capped by `ATHENA_CACHE_MAX_GB` and cleared when Athena stops, unless `ATHENA_KEEP_CACHE=true`.
+
+### Dataset snapshots
+
+The **Dataset Snapshot** node saves a Parquet copy of the table it receives, named after a hash of its contents (`training-data-3f9c1a....parquet` in `~/.athena/snapshots` or a folder you choose), and passes the table on. The same data always gives the same file, written once; any change gives a new one. Read a snapshot back with the **Parquet Loader** to reproduce a run on exactly the same data.
+
 ### Data profiling
 
 After a run, click a node, open **Data Preview** and press **Profile** next to a table output. The profile shows:
@@ -317,7 +328,8 @@ All backend settings are environment variables prefixed `ATHENA_`:
 | `ATHENA_PORT` | `8000` | Backend port |
 | `ATHENA_DATA_DIR` | `~/.athena` | Cache, autosave, and settings root |
 | `ATHENA_NODE_TIMEOUT_S` | `300` | Per-node soft timeout in seconds |
-| `ATHENA_CACHE_MAX_GB` | `2` | Artifact cache eviction threshold |
+| `ATHENA_CACHE_MAX_GB` | `2` | Size limit of the node-result cache; the least recently used results are dropped first |
+| `ATHENA_KEEP_CACHE` | `false` | Keep cached node results when Athena restarts (otherwise the cache is cleared on exit) |
 | `ATHENA_LOG_LEVEL` | `INFO` | structlog level |
 | `ATHENA_ALLOW_CUSTOM_CODE` | `true` | Set to `false` to disable the Custom Code node |
 

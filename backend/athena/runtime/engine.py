@@ -12,8 +12,8 @@ from typing import Any, Callable
 
 import structlog
 
-from athena.core.cache import ArtifactCache, compute_cache_key
-from athena.core.dag import is_descendant_of, topo_sort
+from athena.core.cache import ArtifactCache, compute_cache_key, record, store_dir_for
+from athena.core.dag import topo_sort
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.core.registry import get_handler, get_meta
 from athena.runtime.observers import RunObserver, build_observers, notify
@@ -64,18 +64,26 @@ def run_spec(
 
     ``artifacts_out``, if given, receives every node output keyed by (node_id, port) (used by tests that
     compare Athena's results with the exported script's)."""
+    from athena.config import settings
     from athena.plugins import load_plugins
     load_plugins()  # idempotent; the worker has already done it
     base_log = structlog.get_logger().bind(run_id=run_id)
-    cache = ArtifactCache(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache = ArtifactCache(store_dir_for(cache_dir))
     nodes_dicts = [{"id": n.id} for n in spec.nodes]
     edges_dicts = [{"source": e.source, "target": e.target} for e in spec.edges]
+    known = {n.id for n in spec.nodes}
+    # Run from selected: force the chosen nodes and everything downstream; run (or reuse) only their ancestors.
+    forced = _reachable({i for i in (start_from or []) if i in known}, edges_dicts, downstream=True)
+    needed = forced | _reachable(forced, edges_dicts, downstream=False) if start_from else None
+    used_keys: set[str] = set()
 
     observers: list[RunObserver] = []
 
     def finish(status: str) -> str:
         notify(observers, emit, "on_run_finish", status)  # before run_finish, so tracking is complete
         emit({"type": "run_finish", "status": status})
+        cache.evict(int(settings.cache_max_gb * 1e9), keep=used_keys)
         return status
 
     try:
@@ -92,7 +100,7 @@ def run_spec(
         if cancelled():
             return finish("cancelled")
         node = spec.node(node_id)
-        if start_from and not is_descendant_of(node_id, start_from, edges_dicts) and node_id not in start_from:
+        if needed is not None and node_id not in needed:
             continue
 
         inputs: list[object] = []
@@ -101,10 +109,6 @@ def run_spec(
                 while len(inputs) <= e.target_port:
                     inputs.append(None)
                 inputs[e.target_port] = artifacts[(e.source, e.source_port)]
-
-        parent_keys = [node_cache_keys.get(e.source, "") for e in spec.edges if e.target == node_id]
-        cache_key = compute_cache_key(node.type, node.config, parent_keys)
-        node_cache_keys[node_id] = cache_key
 
         emit({"type": "node_start", "node_id": node_id})
         start = time.monotonic()
@@ -118,16 +122,25 @@ def run_spec(
 
         try:
             handler = get_handler(node.type)
+            meta = get_meta(node.type)
         except KeyError:
             return fail(f"Unknown node type: {node.type!r}")
         if node.runtime not in (None, *LOCAL_RUNTIMES):
             return fail(f"Runtime {node.runtime!r} isn't available in local mode (available: {', '.join(LOCAL_RUNTIMES)})")
 
-        cached = cache.get(cache_key) if node.cache else None
-        if cached is not None:
-            result: HandlerResult = cached
+        # Reusable nodes are skipped when their key is cached. The others (side effects, live data, cache off)
+        # always execute; their key is then salted with a digest of what they produced, so downstream nodes
+        # recompute exactly when that output changed (a query returning the same rows keeps them cached).
+        reusable = node.cache and meta.reusable
+        parent_keys = [node_cache_keys.get(e.source, "") for e in spec.edges if e.target == node_id]
+        cache_key = compute_cache_key(node.type, node.config, parent_keys)
+        node_log = NodeLogger(emit, node_id, base_log)
+
+        hit = cache.get(cache_key) if reusable and node_id not in forced else None
+        if hit is not None:
+            result: HandlerResult = hit
+            node_log.info("Reused the result of an earlier run: settings, upstream nodes and input files are unchanged")
         else:
-            node_log = NodeLogger(emit, node_id, base_log)
             ctx = ExecutionContext(
                 node_id=node_id, node_type=node.type, config=dict(node.config), inputs=inputs,
                 run_id=run_id, cache_dir=cache_dir,
@@ -146,16 +159,65 @@ def run_spec(
                     wait = backoff * 2 ** (attempt - 1)
                     node_log.warning(f"Attempt {attempt} of {attempts} failed: {exc}. Retrying in {wait:g} s")
                     time.sleep(wait)
-            # Always kept for this run (downloads, profiling); node.cache only decides whether it is *reused*.
+            if not reusable:
+                # keyed by what it produced; no file fingerprint (an export's path is its output, not an input)
+                cache_key = compute_cache_key(node.type, node.config, parent_keys, salt=_digest(result.outputs) or run_id,
+                                              fingerprint=False)
+            # Stored even when not reusable: this run's outputs stay downloadable and profilable.
             cache.set(cache_key, result)
-        cache.record(node_id, cache_key)
+        node_cache_keys[node_id] = cache_key
+        record(cache_dir, node_id, cache_key)
+        used_keys.add(cache_key)
 
         for i, art in enumerate(result.outputs):
             artifacts[(node_id, i)] = art
-        observers = notify(observers, emit, "on_node_finish", node, get_meta(node.type), result)
+        observers = notify(observers, emit, "on_node_finish", node, meta, result)
         emit({"type": "node_finish", "node_id": node_id, "status": "success",
               "duration_ms": int((time.monotonic() - start) * 1000),
               "preview": result.preview.model_dump() if result.preview else None,
-              "metrics": result.metrics})
+              "metrics": result.metrics, "cached": hit is not None})
 
     return finish("completed")
+
+
+def _reachable(start: set[str], edges: list[dict[str, str]], downstream: bool) -> set[str]:
+    """``start`` plus every node reachable from it, following edges downstream or upstream."""
+    src, dst = ("source", "target") if downstream else ("target", "source")
+    seen, frontier = set(start), list(start)
+    while frontier:
+        current = frontier.pop()
+        for e in edges:
+            if e[src] == current and e[dst] not in seen:
+                seen.add(e[dst])
+                frontier.append(e[dst])
+    return seen
+
+
+def _digest(outputs: list[Any]) -> str | None:
+    """A fingerprint of a node's outputs by content (equal tables give equal digests however they were made),
+    or None if an output can't be fingerprinted."""
+    import hashlib
+    import pickle
+
+    import numpy as np
+    import pandas as pd
+
+    h = hashlib.sha256()
+    try:
+        for out in outputs:
+            if isinstance(out, (pd.DataFrame, pd.Series)):
+                frame = out.to_frame() if isinstance(out, pd.Series) else out
+                h.update(repr([(str(c), str(t)) for c, t in frame.dtypes.items()]).encode())
+                try:
+                    rows = pd.util.hash_pandas_object(frame, index=True)
+                except TypeError:  # unhashable cells (lists, dicts)
+                    rows = pd.util.hash_pandas_object(frame.astype(str), index=True)
+                h.update(rows.to_numpy().tobytes())
+            elif isinstance(out, np.ndarray) and out.dtype != object:
+                h.update(f"{out.dtype}{out.shape}".encode())
+                h.update(np.ascontiguousarray(out).tobytes())
+            else:  # models, reports, plots: pickle bytes (if these vary, downstream recomputes: the safe side)
+                h.update(pickle.dumps(out, protocol=5))
+    except (pickle.PicklingError, TypeError, AttributeError, ValueError):
+        return None
+    return h.hexdigest()[:16]

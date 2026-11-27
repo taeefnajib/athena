@@ -12,8 +12,10 @@ export function useRunPipeline() {
   const exec = useExecutionStore()
   const { showToast } = useUiStore()
 
-  const run = useCallback(async () => {
+  /** Run the pipeline, or with ``startFrom`` only those nodes and their descendants (ancestors come from the cache). */
+  const run = useCallback(async (startFrom?: unknown) => {
     if (exec.status === 'running') return
+    const from = Array.isArray(startFrom) ? (startFrom as string[]) : undefined  // a click event isn't a selection
 
     // Client-side cycle check
     if (hasCycle(nodes, edges)) {
@@ -29,13 +31,13 @@ export function useRunPipeline() {
     try {
       let runResp: { run_id: string }
       try {
-        runResp = await api.runPipeline(spec)
+        runResp = await api.runPipeline(spec, { startFrom: from })
       } catch (err) {
         // If a previous run leaked the active-run flag on the backend, recover
         // by resetting and retrying once.
         if (err instanceof ApiError && err.status === 409) {
           await api.resetRuns()
-          runResp = await api.runPipeline(spec)
+          runResp = await api.runPipeline(spec, { startFrom: from })
         } else {
           throw err
         }

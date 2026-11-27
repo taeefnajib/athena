@@ -141,7 +141,7 @@ class PipelineWrapHandler:
 
 
 @node(
-    "custom_code", label="Custom Code Node", category="advanced",
+    "custom_code", reusable=False, label="Custom Code Node", category="advanced",
     description="Execute custom Python snippet",
     inputs=[Port("dataset", "dataset")],
     outputs=[Port("dataset", "dataset")],
