@@ -6,6 +6,8 @@ const TEMPLATE_META = [
   { id: 'regression'    as const, label: 'Regression Pipeline',    desc: 'CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals', nodes: 7 },
   { id: 'nlp'           as const, label: 'NLP Pipeline',           desc: 'CSV → TF-IDF Vectorizer → Train/Test → Logistic Regression → Metrics + SHAP', nodes: 6 },
   { id: 'automl'        as const, label: 'AutoML Classification',  desc: 'CSV → Imputer → Train/Test → AutoML Search (30 s, FLAML) → Metrics + Confusion Matrix', nodes: 6 },
+  { id: 'forecasting'   as const, label: 'Sales Forecasting',      desc: 'Daily sales → Time Series Split → ETS vs seasonal-naive baseline, plus a 4-fold backtest (ETS needs the stats extra)', nodes: 5 },
+  { id: 'clustering'    as const, label: 'Customer Segmentation',  desc: 'Customers → K-Means (picks k by silhouette) → Cluster Evaluation map and profile', nodes: 3 },
 ]
 
 export function TemplatesModal() {
@@ -21,12 +23,12 @@ export function TemplatesModal() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowTemplatesModal(false)}>
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 14, width: 440, boxShadow: 'var(--shadow-lg)', animation: 'fadeIn 0.18s ease' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 14, width: 440, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)', animation: 'fadeIn 0.18s ease' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Pipeline Templates</div>
           <button onClick={() => setShowTemplatesModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 2 }}>×</button>
         </div>
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
           {TEMPLATE_META.map(t => (
             <div
               key={t.id}

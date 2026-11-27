@@ -75,12 +75,23 @@ HELPERS: dict[str, object] = {
     "_StackingEnsemble": lambda: _class_source("athena.nodes.ensemble._StackingEnsemble"),
     "_athena_tuning_scores": lambda: _class_source("athena.nodes.calibration._athena_tuning_scores"),
     "_athena_threshold": lambda: _class_source("athena.nodes.calibration._athena_threshold"),
+    **{name: (lambda n=name: _class_source(f"athena.nodes.forecast_core.{n}")) for name in (
+        "_athena_date_col", "_athena_series", "_athena_season", "_athena_forecast", "_athena_forecast_metrics", "_athena_forecast_table",
+        "_athena_backtest_table", "_athena_ts_split")},
+    **{name: (lambda n=name: _class_source(f"athena.nodes.cluster.{n}")) for name in (
+        "_athena_cluster_matrix", "_athena_silhouette", "_athena_auto_k", "_athena_cluster_profile", "_athena_cluster_report")},
     "_StatsBase": lambda: _class_source("athena.nodes.stats._StatsBase"),
     "_StatsOLS": lambda: _class_source("athena.nodes.stats._StatsOLS"),
     "_StatsLogit": lambda: _class_source("athena.nodes.stats._StatsLogit"),
 }
 # helpers another helper needs (a subclass needs its base class, defined above it in HELPERS)
-HELPER_DEPS: dict[str, list[str]] = {"_StatsOLS": ["_StatsBase"], "_StatsLogit": ["_StatsBase"]}
+HELPER_DEPS: dict[str, list[str]] = {
+    "_StatsOLS": ["_StatsBase"], "_StatsLogit": ["_StatsBase"],
+    "_athena_series": ["_athena_date_col"], "_athena_ts_split": ["_athena_date_col"],
+    "_athena_forecast_table": ["_athena_series", "_athena_season", "_athena_forecast", "_athena_forecast_metrics"],
+    "_athena_backtest_table": ["_athena_series", "_athena_season", "_athena_forecast", "_athena_forecast_metrics"],
+    "_athena_auto_k": ["_athena_silhouette"], "_athena_cluster_report": ["_athena_silhouette"],
+}
 HELPER_IMPORTS = {"_StatsBase": ["from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin"],
                   "_VotingEnsemble": ["import numpy as np", "import pandas as pd"],
                   "_StackingEnsemble": ["import numpy as np", "import pandas as pd"]}
@@ -90,7 +101,11 @@ def helpers_for(code: str) -> tuple[list[str], list[str]]:
     """(helper sources, extra imports) needed by ``code``."""
     sources, imports = [], []
     used = {name for name in HELPERS if f"{name}(" in code}
-    used |= {dep for name in used for dep in HELPER_DEPS.get(name, [])}
+    while True:  # dependencies of dependencies too
+        more = {dep for name in used for dep in HELPER_DEPS.get(name, [])} - used
+        if not more:
+            break
+        used |= more
     for name, src in HELPERS.items():  # HELPERS order keeps base classes before subclasses
         if name in used:
             sources.append(src() if callable(src) else src)  # type: ignore[operator]

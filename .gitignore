@@ -45,6 +45,8 @@ autosave.athena
 !backend/data.csv
 !backend/regression_data.csv
 !backend/nlp_data.csv
+!backend/timeseries_data.csv
+!backend/customers_data.csv
 *.xlsx
 *.parquet
 *.sqlite

@@ -63,7 +63,7 @@ export const CATEGORY_META: Record<string, CategoryMeta> = {}
 // Built-in categories have theme-aware colours in globals.css (--cat-<id>).
 const THEMED_CATEGORIES = new Set([
   'data', 'quality', 'feature', 'balance', 'split', 'model',
-  'advanced', 'ensemble', 'eval', 'interp', 'deploy', 'monitor',
+  'advanced', 'ensemble', 'eval', 'interp', 'deploy', 'monitor', 'cluster', 'forecast',
 ])
 
 /** A stable colour for categories added by plugins (no CSS variable). */

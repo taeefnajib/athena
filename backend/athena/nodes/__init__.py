@@ -1,1 +1,1 @@
-from athena.nodes import data, files, api, quality, feature, balance, split, model, boosting, stats, advanced, automl, calibration, ensemble, eval, interp, deploy, monitor  # noqa: F401  (library order = import order)
+from athena.nodes import data, files, api, quality, feature, balance, split, model, boosting, stats, cluster, forecast, advanced, automl, calibration, ensemble, eval, interp, deploy, monitor  # noqa: F401  (library order = import order)

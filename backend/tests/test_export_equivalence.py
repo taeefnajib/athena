@@ -287,6 +287,31 @@ def test_statsmodels_and_pr_curve(tmp_path: Path):
     assert list(ns["df_ols"].columns)[:2] == ["term", "coef"]  # the coefficient table, compared cell by cell above
 
 
+def test_forecasting_nodes(tmp_path: Path):
+    g = G()
+    g.n("csv", "csv_loader", path=str(BACKEND / "timeseries_data.csv"))
+    g.n("sp", "ts_split", test_periods=28); g.e("csv", "sp")
+    for nid, cfg in [("naive", {"method": "seasonal_naive"}), ("ets", {"method": "ets", "ets_trend": "damped"}),
+                     ("ari", {"method": "arima", "arima_order": "1,1,1", "seasonal_order": "0,1,1"}),
+                     ("gbm", {"method": "gbm_lags", "lags": "1,2,7,14"})]:
+        g.n(nid, "forecaster", **cfg); g.e("sp", nid, 0, 0); g.e("sp", nid, 1, 1)
+    g.n("fut", "forecaster", method="ets", horizon=21); g.e("csv", "fut")
+    g.n("bt", "backtest", method="seasonal_naive", folds=3, horizon=14); g.e("csv", "bt")
+    ns = run_both(g.spec(), tmp_path)
+    assert ns["report_ets"]["mase"] < ns["report_naive"]["mase"] and len(ns["df_fut"]) == 21
+
+
+def test_clustering_nodes(tmp_path: Path):
+    g = G()
+    g.n("csv", "csv_loader", path=str(BACKEND / "customers_data.csv"))
+    for nid, ntype, cfg in [("km", "kmeans", {}), ("km3", "kmeans", {"n_clusters": 3, "scale": False, "cols": "annual_income_k,spending_score"}),
+                            ("ag", "agglomerative", {"n_clusters": 4, "linkage": "average"}), ("db", "dbscan", {"eps": 0.8})]:
+        g.n(nid, ntype, **cfg); g.e("csv", nid)
+        g.n(f"{nid}_ev", "cluster_eval"); g.e(nid, f"{nid}_ev")
+    ns = run_both(g.spec(), tmp_path)
+    assert ns["report_km_ev"]["clusters"] == 4
+
+
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""
