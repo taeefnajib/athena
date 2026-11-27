@@ -23,14 +23,21 @@ def metrics(v: V) -> str:
                      f"'r2': float(r2_score({y}, _pred))}}", f"print({out})")
     avg = v["average"]
     return lines(
-        "from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score",
+        "import numpy as np",
+        "from sklearn.metrics import accuracy_score, average_precision_score, f1_score, precision_score, recall_score, roc_auc_score",
+        "from sklearn.preprocessing import label_binarize",
         f"_pred = {m}.predict({X})",
         f"{out} = {{'accuracy': float(accuracy_score({y}, _pred)),",
         f"    'precision': float(precision_score({y}, _pred, average={avg!r}, zero_division=0)),",
         f"    'recall': float(recall_score({y}, _pred, average={avg!r}, zero_division=0)),",
         f"    'f1': float(f1_score({y}, _pred, average={avg!r}, zero_division=0))}}",
         f"if hasattr({m}, 'predict_proba'):\n    _proba = {m}.predict_proba({X})\n"
-        f"    {out}['roc_auc'] = float(roc_auc_score({y}, _proba[:, 1]) if _proba.shape[1] == 2 else roc_auc_score({y}, _proba, multi_class='ovr'))",
+        f"    if _proba.shape[1] == 2:\n"
+        f"        {out}['roc_auc'] = float(roc_auc_score({y}, _proba[:, 1]))\n"
+        f"        {out}['pr_auc'] = float(average_precision_score(np.asarray({y}) == getattr({m}, 'classes_', np.unique({y}))[1], _proba[:, 1]))\n"
+        f"    else:\n"
+        f"        {out}['roc_auc'] = float(roc_auc_score({y}, _proba, multi_class='ovr'))\n"
+        f"        {out}['pr_auc'] = float(average_precision_score(label_binarize({y}, classes=getattr({m}, 'classes_', np.unique({y}))), _proba, average='macro'))",
         f"print({out})",
     )
 

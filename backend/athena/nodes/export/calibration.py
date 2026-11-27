@@ -70,4 +70,28 @@ def threshold_tune(v: V) -> str:
     )
 
 
-EXPORT: dict[str, Template] = {"calibrate": calibrate, "calibration_curve": calibration_curve, "threshold_tune": threshold_tune}
+def pr_curve(v: V) -> str:
+    m, X, y, f = v["in_model"], v["in_X_test"], v["in_y_test"], v["out_plot"]
+    pos = str(v["positive_class"]).strip()
+    return lines(
+        "import matplotlib.pyplot as plt", "import numpy as np",
+        "from sklearn.metrics import average_precision_score, precision_recall_curve",
+        f"_y, _proba = np.asarray({y}), {m}.predict_proba({X})",
+        f"_classes = list(getattr({m}, 'classes_', np.unique(_y)))",
+        "if len(_classes) == 2:\n"
+        f"    _pos = next(c for c in _classes if str(c) == {pos!r}) if {pos!r} else _classes[1]\n"
+        "    _curves = [(str(_pos), _y == _pos, _proba[:, _classes.index(_pos)])]\n"
+        "else:\n"
+        "    _curves = [(str(c), _y == c, _proba[:, i]) for i, c in enumerate(_classes)]",
+        f"{f}, _ax = plt.subplots(figsize=(6.4, 5))",
+        "_colors = ['#257de0', '#f47230', '#00b894', '#f2a600', '#ee7fac', '#008a17', '#6a4ce2', '#ec4647']",
+        "for (_name, _is_pos, _score), _c in zip(_curves, _colors):\n"
+        "    _p, _r, _ = precision_recall_curve(_is_pos, _score)\n"
+        "    _ax.step(_r, _p, where='post', color=_c, lw=2, label=f'Class {_name} · AP {average_precision_score(_is_pos, _score):.3f}')",
+        "_ax.set_xlabel('Recall'); _ax.set_ylabel('Precision'); _ax.set_xlim(0, 1); _ax.set_ylim(0, 1.02)",
+        "_ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1), frameon=False)",
+        f"{f}.tight_layout()", f"{f}.savefig({v['id'] + '_pr_curve.png'!r}, dpi=100)",
+    )
+
+
+EXPORT: dict[str, Template] = {"calibrate": calibrate, "calibration_curve": calibration_curve, "threshold_tune": threshold_tune, "pr_curve": pr_curve}

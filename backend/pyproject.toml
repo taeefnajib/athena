@@ -42,6 +42,7 @@ automl = ["flaml[automl]>=2.3.0"]
 catboost = ["catboost>=1.2.5"]
 optuna = ["optuna>=4.0"]
 api = ["dlt[duckdb]>=1.5.0"]
+stats = ["statsmodels>=0.14.2"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",

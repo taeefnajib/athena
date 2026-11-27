@@ -46,15 +46,19 @@ class MetricsHandler:
             result_metrics["recall"] = float(recall_score(y_test, y_pred, average=cfg.average, zero_division=0))
             result_metrics["f1"] = float(f1_score(y_test, y_pred, average=cfg.average, zero_division=0))
             try:
-                from sklearn.metrics import roc_auc_score
+                from sklearn.metrics import average_precision_score, roc_auc_score
+                from sklearn.preprocessing import label_binarize
                 if hasattr(model, "predict_proba"):
                     proba = model.predict_proba(X_test)
                     if proba.shape[1] == 2:
                         result_metrics["roc_auc"] = float(roc_auc_score(y_test, proba[:, 1]))
+                        # PR-AUC (average precision) for the positive class: the second class, as in roc_auc
+                        result_metrics["pr_auc"] = float(average_precision_score(np.asarray(y_test) == getattr(model, "classes_", np.unique(y_test))[1], proba[:, 1]))
                     else:
                         result_metrics["roc_auc"] = float(roc_auc_score(y_test, proba, multi_class="ovr"))
-            except Exception:
-                pass
+                        result_metrics["pr_auc"] = float(average_precision_score(label_binarize(y_test, classes=getattr(model, "classes_", np.unique(y_test))), proba, average="macro"))
+            except Exception as exc:  # probability metrics are a bonus: a model whose scores don't fit still gets the rest
+                ctx.logger.warning(f"Skipped ROC/PR AUC: {exc}")
         else:
             from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
             result_metrics["rmse"] = float(np.sqrt(mean_squared_error(y_test, y_pred)))
