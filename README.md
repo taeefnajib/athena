@@ -171,6 +171,8 @@ Tables over 100,000 rows are profiled on a random sample, and the header says so
 ### More models and smarter tuning
 
 - **LightGBM** and **LightGBM Regressor** (included) and **CatBoost** / **CatBoost Regressor** (`uv sync --extra catboost`; handles text columns without one-hot encoding). Connect `X_val`/`y_val` and set *Early stopping rounds* to stop adding trees when validation stops improving.
+- **OLS Regression** and **Logistic Regression (statsmodels)** (`uv sync --extra stats`): the classic statistical models with inference. Besides the model, they output a coefficient table (estimate, standard error, t/z statistic, p-value, 95% interval), and the Logs tab shows the full statsmodels summary. Choose *HC3* standard errors when the error variance isn't constant. The models plug into every downstream node (Metrics, Confusion Matrix, Calibration, Decision Threshold, Predict…). Features must be numeric with no missing values.
+- **PR-AUC**: the Metrics node now reports average precision next to ROC AUC, and the **Precision-Recall Curve** node plots precision against recall with the no-skill baseline. On imbalanced data it is a more honest score than ROC AUC.
 - **HP Tuning Config → Optuna** (`uv sync --extra optuna`): smarter search than grid or random. A value list of more than three numbers (`10-200`) is searched as a range; each trial is cross-validated and shown in the Logs tab.
 
 ### Experiment tracking and model registry (MLflow)

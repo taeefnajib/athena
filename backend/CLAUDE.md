@@ -325,6 +325,11 @@ Rules:
 - `_athena_tuning_scores` and `_athena_threshold` are self-contained functions that codegen copies verbatim into exports (`core/export_helpers.py`), so the search is identical in Athena and the script. Ties take the middle of the tied threshold range; precision is 0 where nothing is predicted positive.
 - Tuning never touches the test set. Without `X_val`/`y_val`, scores are out-of-fold predictions on the training set.
 
+### statsmodels and PR-AUC
+
+- `nodes/stats.py` (extra `athena-backend[stats]`): `sm_ols` and `sm_logit`. `_StatsOLS` / `_StatsLogit` (on `_StatsBase(BaseEstimator)`) are real scikit-learn estimators, so `clone()`, Metrics, Calibration and Decision Threshold work with them. They're self-contained and copied verbatim into exports; `HELPER_DEPS` in `core/export_helpers.py` pulls in a helper's base class.
+- PR-AUC is `average_precision_score` for the second class (binary) or the macro average over classes; the Metrics node and `pr_curve` (in `nodes/calibration.py`) agree.
+
 ### AutoML
 
 `nodes/automl.py` (optional extra `athena-backend[automl]`, FLAML). The output model is FLAML's `AutoML` object (it keeps FLAML's preprocessing, so downstream nodes call it like any estimator). Task and metric are resolved explicitly before calling FLAML so scores can be reported as scores, not losses. FLAML's own MLflow logging is disabled (`mlflow_logging=False`); Athena's tracking observer owns the run. FLAML's logger doesn't propagate: attach handlers to `flaml.automl.logger` directly.

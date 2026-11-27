@@ -270,6 +270,23 @@ def test_calibration_and_threshold_nodes(tmp_path: Path):
     assert 0 < ns["report_thr_v"]["threshold"] < 1 and ns["report_thr_c"]["recall"] >= 0.85
 
 
+def test_statsmodels_and_pr_curve(tmp_path: Path):
+    g = G()
+    g.n("csv", "csv_loader", path=str(BACKEND / "data.csv"))
+    g.n("imp", "imputer", strategy="median"); g.e("csv", "imp")
+    g.n("tt", "train_test", stratify=True); g.e("imp", "tt")
+    g.model("lgt", "sm_logit", "tt", cov_type="HC3")
+    g.n("pr", "pr_curve"); g.e("lgt", "pr", 0, 0); g.e("tt", "pr", 2, 1); g.e("tt", "pr", 3, 2)
+    g.n("thr", "threshold_tune", cv=3); g.e("lgt", "thr", 0, 0); g.e("tt", "thr", 0, 1); g.e("tt", "thr", 1, 2)
+    g.n("reg", "csv_loader", path=str(BACKEND / "regression_data.csv"))
+    g.n("rimp", "imputer", strategy="median"); g.e("reg", "rimp")
+    g.n("rtt", "train_test", stratify=False); g.e("rimp", "rtt")
+    g.model("ols", "sm_ols", "rtt", metrics_task="regression")
+    ns = run_both(g.spec(), tmp_path)
+    assert "pr_auc" in ns["report_lgt_m"] and (tmp_path / "pr_pr_curve.png").exists()
+    assert list(ns["df_ols"].columns)[:2] == ["term", "coef"]  # the coefficient table, compared cell by cell above
+
+
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""

@@ -4,9 +4,9 @@
 Templates are pure functions of the node's values (see athena/core/codegen.py for what they receive) and
 mirror the node's handler: the exported script must compute what Athena computed.
 """
-from athena.nodes.export import calibration, data, evaluate, io, models
+from athena.nodes.export import calibration, data, evaluate, io, models, stats
 from athena.nodes.export.common import Template
 
-EXPORT: dict[str, Template] = {**data.EXPORT, **models.EXPORT, **evaluate.EXPORT, **io.EXPORT, **calibration.EXPORT}
+EXPORT: dict[str, Template] = {**data.EXPORT, **models.EXPORT, **evaluate.EXPORT, **io.EXPORT, **calibration.EXPORT, **stats.EXPORT}
 
 __all__ = ["EXPORT", "Template"]

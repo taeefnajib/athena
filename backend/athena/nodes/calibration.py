@@ -252,3 +252,60 @@ def _threshold_plot(table: dict[str, np.ndarray], threshold: float, cfg: Any, po
     fig.tight_layout()
     return fig
 
+
+
+@node(
+    "pr_curve", label="Precision-Recall Curve", category="eval",
+    description="Precision against recall at every threshold, with average precision (PR-AUC); the honest view on imbalanced data",
+    inputs=[Port("model", "model"), Port("X_test", "X_test"), Port("y_test", "y_test")],
+    outputs=[Port("plot", "plot")],
+    fields={"positive_class": ui("Positive class", help="Binary targets only. Empty = the second class in sorted order (e.g. 1).")},
+    code=EXPORT["pr_curve"],
+)
+class PrCurveHandler:
+    class Config(BaseModel):
+        positive_class: str = ""
+
+    def __call__(self, ctx: ExecutionContext) -> HandlerResult:
+        import matplotlib.pyplot as plt
+        from sklearn.metrics import average_precision_score, precision_recall_curve
+
+        cfg = self.Config(**ctx.config)
+        model, X_test, y_test = ctx.inputs
+        if not hasattr(model, "predict_proba"):
+            raise ValueError(f"{type(model).__name__} doesn't output probabilities (no predict_proba)")
+        y = np.asarray(y_test)
+        classes = list(getattr(model, "classes_", np.unique(y)))
+        proba = model.predict_proba(X_test)
+        if len(classes) == 2:
+            pos = next((c for c in classes if str(c) == cfg.positive_class.strip()), None) if cfg.positive_class.strip() else classes[1]
+            if pos is None:
+                raise ValueError(f"Positive class {cfg.positive_class!r} isn't one of the classes {[str(c) for c in classes]}")
+            curves = [(str(pos), y == pos, proba[:, classes.index(pos)])]
+        elif len(classes) <= len(SERIES):
+            curves = [(str(c), y == c, proba[:, i]) for i, c in enumerate(classes)]
+        else:
+            raise ValueError(f"Too many classes to plot ({len(classes)}; up to {len(SERIES)}). Group rare classes first")
+
+        fig, ax = plt.subplots(figsize=(6.4, 5))
+        metrics: dict[str, float] = {}
+        for (name, is_pos, score), color in zip(curves, SERIES):
+            precision, recall, _ = precision_recall_curve(is_pos, score)
+            ap = float(average_precision_score(is_pos, score))
+            metrics[f"ap_{name}" if len(curves) > 1 else "pr_auc"] = ap
+            ax.step(recall, precision, where="post", color=color, lw=2, label=f"Class {name} · AP {ap:.3f}")
+            if len(curves) == 1:
+                base = float(is_pos.mean())
+                ax.axhline(base, color="#999999", lw=1, linestyle=(0, (4, 3)), label=f"No skill · {base:.3f}")
+        if len(curves) > 1:
+            metrics["pr_auc"] = float(np.mean(list(metrics.values())))
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1.02)
+        ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
+        title = f"Precision-recall · AP {metrics['pr_auc']:.3f}" + (" (macro)" if len(curves) > 1 else "")
+        ax.set_title(title, fontsize=11, loc="left")
+        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=8.5, frameon=False)
+        style_axes(ax)
+        fig.tight_layout()
+        preview = fig_to_plot_preview(fig)
+        ctx.logger.info("Precision-recall curve plotted", pr_auc=round(metrics["pr_auc"], 4), classes=len(classes))
+        return HandlerResult(outputs=[preview], preview=preview, metrics=metrics)
