@@ -173,7 +173,7 @@ def test_stop_deletes_the_job(cluster: FakeCluster, tmp_path: Path):
 
 def test_runtime_validation(cluster: FakeCluster):
     from athena.runtime import adapters
-    with pytest.raises(adapters.RuntimeUnavailable, match="needs a Kubernetes connection"):
+    with pytest.raises(adapters.RuntimeUnavailable, match="needs a Kubernetes cluster connection"):
         adapters.parse("k8s")
     store.save_connection("r", "ray", {"address": "auto"})
     with pytest.raises(adapters.RuntimeUnavailable, match="not a Kubernetes cluster connection"):
