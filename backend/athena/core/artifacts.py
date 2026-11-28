@@ -28,6 +28,18 @@ def run_dir(run_id: str) -> Path:
     return d
 
 
+def load_result(run_id: str, node_id: str) -> Any:
+    """A node's whole HandlerResult from a finished run (outputs, preview, metrics, replay step)."""
+    d = run_dir(run_id)
+    index = read_index(d)
+    if node_id not in index:
+        raise ArtifactNotFound(f"Node {node_id!r} has no saved output in this run (it didn't run, or it failed).")
+    result = ArtifactCache(store_dir_for(d)).get(index[node_id])
+    if result is None:
+        raise ArtifactNotFound(f"Node {node_id!r}'s output is no longer cached. Run the pipeline again.")
+    return result
+
+
 def load_output(run_id: str, node_id: str, port: int) -> Any:
     d = run_dir(run_id)
     index = read_index(d)

@@ -116,7 +116,7 @@ class HpTuneHandler:
 
 @node(
     "pipeline_wrap", label="Pipeline Wrapper", category="advanced",
-    description="Wrap preprocessing + model into a pipeline",
+    description="Wrap a model in a scikit-learn Pipeline object. To serve a model with its preprocessing, use Deploy (it replays the fitted preprocessing)",
     inputs=[Port("dataset", "dataset"), Port("model", "model")],
     outputs=[Port("pipeline", "pipeline")],
     fields={

@@ -49,7 +49,8 @@ class ScalerHandler:
             df[target_cols] = scaler.fit_transform(df[target_cols])
 
         ctx.logger.info("Scaled", method=cfg.method, cols=len(target_cols))
-        return HandlerResult(outputs=[df, scaler], preview=preview_dataframe(df))
+        return HandlerResult(outputs=[df, scaler], preview=preview_dataframe(df),
+                             replay={"kind": "columns_transform", "transformer": scaler, "cols": target_cols} if target_cols else {"kind": "skip"})
 
 
 @node(
@@ -79,7 +80,7 @@ class OheHandler:
 
         if not cat_cols:
             ctx.logger.info("OHE: no categorical columns found, passthrough")
-            return HandlerResult(outputs=[df, None], preview=preview_dataframe(df))
+            return HandlerResult(outputs=[df, None], preview=preview_dataframe(df), replay={"kind": "skip"})
 
         drop_opt = "first" if cfg.drop else None
         enc = OneHotEncoder(drop=drop_opt, sparse_output=False, handle_unknown="ignore")
@@ -89,7 +90,8 @@ class OheHandler:
         result = pd.concat([df.drop(columns=cat_cols), enc_df], axis=1)
 
         ctx.logger.info("OHE", cols=cat_cols, new_features=len(feature_names))
-        return HandlerResult(outputs=[result, enc], preview=preview_dataframe(result))
+        return HandlerResult(outputs=[result, enc], preview=preview_dataframe(result),
+                             replay={"kind": "one_hot", "encoder": enc, "cols": cat_cols})
 
 
 @node(
@@ -116,7 +118,8 @@ class LabelEncHandler:
             df[col] = le.fit_transform(df[col].astype(str))
             encoders[col] = le
         ctx.logger.info("Label encoded", cols=cols)
-        return HandlerResult(outputs=[df, encoders], preview=preview_dataframe(df))
+        return HandlerResult(outputs=[df, encoders], preview=preview_dataframe(df),
+                             replay={"kind": "label_encode", "classes": {c: [str(x) for x in le.classes_] for c, le in encoders.items()}})
 
 
 @node(
@@ -188,7 +191,7 @@ class ColSelectorHandler:
             raise ValueError(f"Columns not found in dataset: {missing}")
         result = df[cols] if cfg.mode == "include" else df.drop(columns=cols)
         ctx.logger.info("Column selector", mode=cfg.mode, cols=cols, remaining=len(result.columns))
-        return HandlerResult(outputs=[result], preview=preview_dataframe(result))
+        return HandlerResult(outputs=[result], preview=preview_dataframe(result), replay={"kind": "select", "mode": cfg.mode, "cols": cols})
 
 
 @node(
@@ -228,7 +231,8 @@ class FeatGenHandler:
         result = pd.concat([df.drop(columns=num_cols), poly_df], axis=1)
         ctx.logger.info("Feature generation", degree=cfg.degree, features_in=len(num_cols), features_out=len(new_names))
         return HandlerResult(outputs=[result], preview=preview_dataframe(result),
-                             metrics={"features_in": float(len(num_cols)), "features_out": float(len(new_names))})
+                             metrics={"features_in": float(len(num_cols)), "features_out": float(len(new_names))},
+                             replay={"kind": "poly", "transformer": poly, "cols": num_cols})
 
 
 @node(
@@ -265,7 +269,7 @@ class TfidfHandler:
         result = pd.concat([df.drop(columns=[cfg.col]), feat_df], axis=1)
         ctx.logger.info("Text vectorized", method=cfg.method, features=mat.shape[1])
         return HandlerResult(outputs=[result], preview=preview_dataframe(result),
-                             metrics={"features": float(mat.shape[1])})
+                             metrics={"features": float(mat.shape[1])}, replay={"kind": "text", "vectorizer": vec, "col": cfg.col})
 
 
 @node(
@@ -304,7 +308,7 @@ class DateFeatHandler:
                 added += 1
         ctx.logger.info("Date features extracted", col=cfg.col, added=added)
         return HandlerResult(outputs=[df], preview=preview_dataframe(df),
-                             metrics={"features_added": float(added)})
+                             metrics={"features_added": float(added)}, replay={"kind": "dates", "col": cfg.col, "features": requested})
 
 
 @node(
@@ -386,7 +390,8 @@ class PcaHandler:
         var_explained = float(pca.explained_variance_ratio_.sum())
         ctx.logger.info("PCA", components=n, variance_explained=var_explained)
         return HandlerResult(outputs=[result], preview=preview_dataframe(result),
-                             metrics={"components": float(n), "variance_explained": var_explained})
+                             metrics={"components": float(n), "variance_explained": var_explained},
+                             replay={"kind": "pca", "pca": pca, "cols": list(num_X.columns), "target": target_col if has_target else None})
 
 
 @node(

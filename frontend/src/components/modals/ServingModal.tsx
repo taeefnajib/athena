@@ -8,7 +8,8 @@ interface Feature { name: string; kind: string; dtype: string; example: unknown 
 interface Bundle {
   name: string; slug: string; path: string; model: string; task: string; version: string; features: Feature[]; classes: unknown[]
   source: { pipeline?: string; node_label?: string; run_id?: string }
-  preprocessing_not_included: string[]; needs_athena: boolean
+  preprocessing_not_included: string[]; preprocessing_replayed: string[]; training_only: string[]
+  preprocessing_verified: boolean; preprocessing_note: string; needs_athena: boolean
   endpoint: { running: boolean; url: string | null }
 }
 
@@ -129,10 +130,21 @@ export function ServingModal() {
                     {confirmDelete ? 'Delete?' : 'Delete'}
                   </button>
                 </div>
+                {current.preprocessing_replayed.length > 0 && (
+                  <div role="note" style={{ marginTop: 12, padding: '8px 12px', border: '1px solid var(--border2)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
+                    ✓ <strong>Takes raw rows.</strong> The service replays the pipeline's fitted preprocessing before predicting:{' '}
+                    {current.preprocessing_replayed.join(' → ')}.
+                    {current.preprocessing_verified && <span style={{ color: 'var(--text-muted)' }}> Checked: it reproduces the training features exactly.</span>}
+                    {current.training_only.length > 0 && <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>Training-only steps, skipped when serving: {current.training_only.join(', ')}.</div>}
+                  </div>
+                )}
+                {current.preprocessing_note && (
+                  <div role="note" style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-dim)' }}>{current.preprocessing_note}</div>
+                )}
                 {current.preprocessing_not_included.length > 0 && (
                   <div role="note" style={{ marginTop: 12, padding: '8px 12px', border: '1px solid var(--warning)', borderRadius: 8, fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>
-                    ⚠ <strong>Send preprocessed features.</strong> These steps ran before training and are not part of the served model:{' '}
-                    {current.preprocessing_not_included.join(', ')}. Requests need the features as they were after those steps.
+                    ⚠ <strong>Send partly preprocessed features.</strong> These steps can't be replayed yet, so requests must already reflect them:{' '}
+                    {current.preprocessing_not_included.join(', ')}.
                   </div>
                 )}
                 {current.needs_athena && (
