@@ -11,6 +11,8 @@ import { OutputActions } from './OutputActions'
 import { formatMetric } from '../../lib/formatMetric'
 import { RunFromHere } from './RunFromHere'
 import { ResourceField } from './ResourceField'
+import { CodeTab } from './CodeTab'
+import { CodeEditor } from '../ui/LazyCodeEditor'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
 type HpParam = { key: string; values: string }
@@ -30,7 +32,7 @@ export function RightSidebar({ onRunFrom }: { onRunFrom: (nodeId: string) => voi
           transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
           style={{ overflow: 'hidden', flexShrink: 0, height: '100%' }}
         >
-          <Inspector nodeId={node.id} nodeType={node.type} config={node.config} onRunFrom={onRunFrom} />
+          <Inspector key={node.id} nodeId={node.id} nodeType={node.type} config={node.config} onRunFrom={onRunFrom} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -60,7 +62,7 @@ function Inspector({ nodeId, nodeType, config, onRunFrom }: { nodeId: string; no
   }
   const st = statusMap[nodeState?.status ?? 'idle']
 
-  const TABS = ['settings', 'preview', 'logs', 'metrics'] as const
+  const TABS = ['settings', 'preview', 'logs', 'metrics', 'code'] as const
 
   return (
     <div style={{ width: 280, minWidth: 280, background: 'var(--panel)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -104,6 +106,7 @@ function Inspector({ nodeId, nodeType, config, onRunFrom }: { nodeId: string; no
         {inspectorTab === 'preview'  && <PreviewTab preview={preview} />}
         {inspectorTab === 'logs'     && <LogsTab logs={logs} />}
         {inspectorTab === 'metrics'  && <MetricsTab metrics={metrics} />}
+        {inspectorTab === 'code'     && <CodeTab nodeId={nodeId} />}
       </div>
     </div>
   )
@@ -162,6 +165,9 @@ function SettingsTab({ spec, config, nodeId, onChange }: { spec: NodeSpec; confi
               />
             )}
             {field.type === 'password' && <input style={inputBase} type="password" autoComplete="new-password" value={String(val)} onChange={e => update(e.target.value)} />}
+            {field.type === 'code' && (
+              <CodeEditor value={String(val)} language={field.language ?? 'python'} onChange={update} ariaLabel={field.label} />
+            )}
             {field.type === 'resource' && (
               <ResourceField value={String(val)} onChange={update}
                              connection={String((field.connection_field && config[field.connection_field]) ?? '')} />

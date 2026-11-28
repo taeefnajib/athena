@@ -161,6 +161,8 @@ interface PipelineState {
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void
   updateNodePolicy: (id: string, policy: NodePolicy) => void
   moveNode: (id: string, position: { x: number; y: number }) => void
+  /** Move many nodes at once (Tidy layout) as one undo step. */
+  applyLayout: (positions: Record<string, { x: number; y: number }>) => void
   addEdge: (edge: PipelineEdge) => void
   removeEdge: (id: string) => void
   setSelectedNode: (id: string | null) => void
@@ -222,6 +224,15 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   moveNode: (id, position) => {
     set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, position } : n), isDirty: true }))
+  },
+
+  applyLayout: (positions) => {
+    set(s => {
+      const nodes = s.nodes.map(n => positions[n.id] ? { ...n, position: positions[n.id] } : n)
+      // Drags aren't history entries, so record the current positions first: undo returns exactly here.
+      const before = pushHistory(s, s.nodes, s.edges)
+      return { nodes, isDirty: true, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(before, nodes, s.edges) }
+    })
   },
 
   addEdge: (edge) => {

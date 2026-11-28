@@ -146,7 +146,7 @@ class PipelineWrapHandler:
     inputs=[Port("dataset", "dataset")],
     outputs=[Port("dataset", "dataset")],
     fields={
-        "code": ui("Python Code", widget="textarea", mono=True),
+        "code": ui("Python Code", widget="code", language="python"),
     },
     code=EXPORT["custom_code"],
 )

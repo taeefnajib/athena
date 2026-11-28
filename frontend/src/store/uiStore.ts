@@ -10,7 +10,7 @@ interface UiState {
   showConnectionsModal: boolean
   showTrackingModal: boolean
   showRunsModal: boolean
-  inspectorTab: 'settings' | 'preview' | 'logs' | 'metrics'
+  inspectorTab: 'settings' | 'preview' | 'logs' | 'metrics' | 'code'
   profileTarget: { nodeId: string; port: number } | null
   /** Nodes a pending "Run from here" would execute, highlighted on the canvas while hovering the button. */
   runPreview: string[] | null

@@ -10,7 +10,7 @@ from athena.core.events import broker
 from athena.core.dag import has_cycle
 from athena.storage.files import save_pipeline, load_pipeline
 from athena.storage.autosave import save_autosave, load_latest_autosave
-from athena.core.codegen import pipeline_to_json, pipeline_to_notebook, pipeline_to_python
+from athena.core.codegen import build_sections, pipeline_to_json, pipeline_to_notebook, pipeline_to_python
 from athena.config import settings
 
 router = APIRouter(prefix="/api/pipelines")
@@ -66,6 +66,19 @@ async def load(req: LoadRequest):
         raise HTTPException(404, detail={"detail": str(e), "code": "FILE_NOT_FOUND"})
     except Exception as e:
         raise HTTPException(400, detail={"detail": str(e), "code": "PIPELINE_VALIDATION_FAILED"})
+
+
+@router.post("/code")
+async def code(req: ExportRequest) -> dict:
+    """The generated Python, per node (for the inspector's Code tab) and as the whole script Export Code writes."""
+    import anyio
+
+    def build() -> dict:
+        sections = build_sections(req.spec)
+        return {"script": pipeline_to_python(req.spec),
+                "sections": [{"node_id": s.node_id, "label": s.label, "code": s.code, "imports": s.imports,
+                              "exported": s.exported} for s in sections]}
+    return await anyio.to_thread.run_sync(build)
 
 
 @router.post("/export")

@@ -24,6 +24,8 @@ That's it. The frontend never executes ML code, never owns "ground truth" about 
 - **Tailwind CSS** + CSS variables for theme tokens
 - **Framer Motion** for sidebar slides, modals, toast fades
 - **lucide-react** for icons (consistent stroke style; don't mix icon libraries)
+- **CodeMirror 6** (`components/ui/CodeEditor.tsx`, imported through `LazyCodeEditor` so it loads on first use) for code: syntax colours come from `--code-*` variables, ligatures are off, editable editors commit on blur
+- **dagre** (`lib/layout.ts`, pure and unit-tested) for "Tidy layout"
 - **clsx** for conditional classes
 - **Vitest** + **React Testing Library** for tests
 
@@ -147,7 +149,9 @@ Layout (left → right): logo · Run · Stop · | · Undo · Redo · | · Save �
 ### RightSidebar (Inspector)
 Width: 320px on desktop, slides in from the right when something is selected, slides out when nothing is. Use Framer Motion `AnimatePresence` for mount/unmount.
 
-Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**.
+Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**, **Code** (the node's generated Python from `POST /api/pipelines/code`, exactly what Export Code writes; read-only, with Copy and Full script). Config fields with widget `code` (Custom Code, SQL) are CodeMirror editors.
+
+**Tidy layout** (canvas controls) runs `autoLayout` (dagre, left to right) and applies it with `applyLayout` as one undo step that first records the current positions, so Ctrl+Z restores them exactly. It only ever runs on that explicit command.
 
 - **Settings**: render a form derived from `node.config` schema. Each `ConfigField.type` maps to a component in `components/ui/`. Update the store on `onChange` for toggles/selects, on `onBlur` for text/textarea (avoid spamming history during typing). Validation: numbers must be numbers; required fields highlighted on save.
 - **Data Preview**: read from `executionStore.previews[nodeId]`. If absent (node hasn't run), show "Run the pipeline to see a preview." If present and `kind === 'dataframe'`, render a virtualized table (use `@tanstack/react-table` for sort, but virtualization can be naive for ≤50 rows). If `kind === 'plot'`, render the base64 PNG centered with a download button.

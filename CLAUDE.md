@@ -257,6 +257,8 @@ The core stack below is fixed. Integrations from `docs/ROADMAP.md` (MLflow, Duck
 | State | **Zustand** | spec; lightweight, plays nicely with React Flow |
 | Styling | **Tailwind CSS** + CSS variables for theming | spec; CSS vars enable runtime light/dark swap |
 | Animation | **Framer Motion** | spec; for sidebar slides, modal fades, status pulses |
+| Code editor | **CodeMirror 6** (lazy-loaded) | per-node code view and code fields; light, themeable with CSS vars (chosen over Monaco, 2026-11-28) |
+| Auto-layout | **dagre** (`@dagrejs/dagre`) | "Tidy layout": layered left-to-right DAG layout (chosen over ELK, 2026-11-28) |
 | Backend | **FastAPI + uvicorn** | first-class WS, async, Pydantic v2 |
 | ML libs | **pandas, numpy, scikit-learn, xgboost, imbalanced-learn, shap, lime, joblib** | match the spec's node list |
 | Plotting | **matplotlib** (server-side, returned as base64 PNG); never seaborn-only — keep deps lean | |

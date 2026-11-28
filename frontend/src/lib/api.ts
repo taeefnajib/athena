@@ -23,12 +23,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export { ApiError }
 
+export interface CodeSection { node_id: string; label: string; code: string; imports: string[]; exported: boolean }
+
 export const api = {
   runPipeline: (spec: PipelineSpec, opts?: { startFrom?: string[] }) =>
     request<{ run_id: string }>(`${BASE}/pipelines/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ spec, start_from: opts?.startFrom }),
+    }),
+
+  /** The generated Python per node and as the whole script (exactly what Export Code writes). */
+  code: (spec: PipelineSpec) =>
+    request<{ script: string; sections: CodeSection[] }>(`${BASE}/pipelines/code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec, format: 'python' }),
     }),
 
   cancelRun: (runId: string) =>

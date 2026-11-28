@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
-  ReactFlow, Background, Controls, MiniMap,
+  ReactFlow, Background, Controls, ControlButton, MiniMap,
   type Connection, type Edge, type Node,
   type NodeChange, type EdgeChange,
   useNodesState, useEdgesState, useReactFlow,
@@ -13,6 +13,8 @@ import { useExecutionStore } from '../../store/executionStore'
 import { useUiStore } from '../../store/uiStore'
 import { NODE_REGISTRY, CATEGORY_META } from '../../registry/nodeRegistry'
 import { isValidConnection } from '../../lib/validation'
+import { autoLayout } from '../../lib/layout'
+import { Network } from 'lucide-react'
 
 function toRfNode(n: PipelineNode): Node {
   return {
@@ -50,6 +52,16 @@ export function GraphCanvas() {
   const execStatus = useExecutionStore(s => s.status)
   const showToast = useUiStore(s => s.showToast)
   const { screenToFlowPosition, fitView } = useReactFlow()
+  const applyLayout = usePipelineStore(s => s.applyLayout)
+  const tidyToast = useUiStore(s => s.showToast)
+  // Tidy layout: an explicit, undoable command (auto-layout never moves nodes on its own).
+  const tidy = useCallback(() => {
+    const { nodes, edges } = usePipelineStore.getState()
+    if (nodes.length === 0) return
+    const ports = (type: string) => Math.max(NODE_REGISTRY[type]?.inputs.length ?? 1, NODE_REGISTRY[type]?.outputs.length ?? 1)
+    applyLayout(autoLayout(nodes.map(n => ({ id: n.id, ports: ports(n.type) })), edges))
+    tidyToast('Arranged the nodes. Ctrl+Z to undo', 'info')
+  }, [applyLayout, tidyToast])
 
   const [rfNodes, setRfNodes, onNodesChangeBase] = useNodesState<Node>(storeNodes.map(toRfNode))
   const [rfEdges, setRfEdges, onEdgesChangeBase] = useEdgesState<Edge>(storeEdges.map(toRfEdge))
@@ -81,7 +93,21 @@ export function GraphCanvas() {
 
     if (anyRemoved || anyChanged || added.length > 0) {
       setRfNodes(storeNodes.map(toRfNode))
+      return
     }
+
+    // Positions changed in the store (Tidy layout, undo/redo): move just those nodes. After an ordinary drag the
+    // canvas already shows the stored position, so nothing changes.
+    const target = new Map(storeNodes.map(n => [n.id, n.position]))
+    setRfNodes(existing => {
+      let moved = false
+      const next = existing.map(n => {
+        const p = target.get(n.id)
+        if (p && (p.x !== n.position.x || p.y !== n.position.y)) { moved = true; return { ...n, position: p } }
+        return n
+      })
+      return moved ? next : existing
+    })
   }, [storeNodes, setRfNodes])
 
   useEffect(() => {
@@ -218,7 +244,11 @@ export function GraphCanvas() {
         style={{ background: 'transparent' }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="var(--border)" />
-        <Controls />
+        <Controls>
+          <ControlButton onClick={tidy} title="Tidy layout: arrange nodes left to right (Ctrl+Z undoes it)" aria-label="Tidy layout">
+            <Network size={14} />
+          </ControlButton>
+        </Controls>
         <MiniMap
           nodeColor={nodeColor}
           style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }}

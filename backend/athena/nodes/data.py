@@ -271,7 +271,7 @@ class ManualInputHandler:
     outputs=[Port("dataset", "dataset")],
     fields={
         "connection": ui("Connection", widget="connection", connector="sql"),
-        "query": ui("SQL Query", widget="textarea", mono=True),
+        "query": ui("SQL Query", widget="code", language="sql"),
         "limit": ui("Row limit", help="0 = no limit"),
     },
     code=EXPORT["db_connector"],
