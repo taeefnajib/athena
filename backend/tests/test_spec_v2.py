@@ -80,9 +80,9 @@ def test_custom_code_always_reruns(tmp_path: Path, cache: bool, expected_calls: 
 
 
 def test_unknown_runtime_is_a_clear_node_error(tmp_path: Path):
-    status, events = _run_inline(_spec("return df", runtime="ray"), tmp_path / "c")
+    status, events = _run_inline(_spec("return df", runtime="k8s"), tmp_path / "c")
     err = next(e for e in events if e["type"] == "node_finish" and e["node_id"] == "n2")
-    assert status == "error" and "isn't available in local mode" in err["error"]["message"]
+    assert status == "error" and "Unknown runtime 'k8s'" in err["error"]["message"]
 
 
 @pytest.mark.asyncio

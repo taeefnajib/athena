@@ -16,13 +16,12 @@ from athena.core.cache import ArtifactCache, compute_cache_key, record, store_di
 from athena.core.dag import topo_sort
 from athena.core.handler import ExecutionContext, HandlerResult
 from athena.core.registry import get_handler, get_meta
+from athena.runtime import adapters
 from athena.runtime.observers import RunObserver, build_observers, notify
 from athena.schemas.pipeline import PipelineSpec
 
 Emit = Callable[[dict[str, Any]], None]
 
-LOCAL_RUNTIMES = ("python",)
-"""Runtimes the local worker can execute. Distributed ones (ray, k8s, …) arrive in roadmap phase 3."""
 
 _LEVELS = {"debug": "debug", "info": "info", "warning": "warn", "warn": "warn", "error": "error", "exception": "error"}
 
@@ -130,8 +129,10 @@ def run_spec(
             meta = get_meta(node.type)
         except KeyError:
             return fail(f"Unknown node type: {node.type!r}")
-        if node.runtime not in (None, *LOCAL_RUNTIMES):
-            return fail(f"Runtime {node.runtime!r} isn't available in local mode (available: {', '.join(LOCAL_RUNTIMES)})")
+        try:
+            adapters.check(node.runtime)
+        except adapters.RuntimeUnavailable as exc:
+            return fail(str(exc))
 
         # Reusable nodes are skipped when their key is cached. The others (side effects, live data, cache off)
         # always execute; their key is then salted with a digest of what they produced, so downstream nodes
@@ -156,11 +157,12 @@ def run_spec(
             backoff = node.retry.backoff_s if node.retry else 0.0
             for attempt in range(1, attempts + 1):
                 try:
-                    result = handler(ctx)
+                    result = adapters.run_node(node, handler, ctx)  # locally, or on Ray (runtime/adapters.py)
                     break
                 except Exception as exc:  # a failing handler is a user-visible error, not a crash
                     if attempt == attempts or cancelled():
-                        return fail(str(exc) or type(exc).__name__, traceback.format_exc())
+                        # a node that failed on Ray carries the traceback from where it ran
+                        return fail(str(exc) or type(exc).__name__, getattr(exc, "remote_traceback", None) or traceback.format_exc())
                     wait = backoff * 2 ** (attempt - 1)
                     node_log.warning(f"Attempt {attempt} of {attempts} failed: {exc}. Retrying in {wait:g} s")
                     time.sleep(wait)

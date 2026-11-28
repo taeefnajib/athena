@@ -133,8 +133,8 @@ This is what the frontend sends to `POST /api/pipelines/run` and what's saved as
       "timeout_s": 120,             // overrides ATHENA_NODE_TIMEOUT_S
       "retry": { "max_attempts": 3, "backoff_s": 2 },
       "cache": true,                // false = always re-run (live data)
-      "runtime": null,              // only "python" (local worker) today
-      "resources": { "cpu": 2, "memory_gb": 4, "gpu": 0 }   // advisory locally
+      "runtime": null,              // null/"python" = local worker; "ray" = local Ray cluster; "ray:<connection>"
+      "resources": { "cpu": 2, "memory_gb": 4, "gpu": 0 }   // advisory locally, reserved on Ray
     }
   ],
   "edges": [

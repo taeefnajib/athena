@@ -18,6 +18,7 @@ from athena.api.tracking import router as tracking_router
 from athena.api.subflows import router as subflows_router
 from athena.api.serving import router as serving_router
 from athena.api.schedules import router as schedules_router
+from athena.api.runtimes import router as runtimes_router
 from athena.core.executor import pool, reset_active_run
 
 # Register built-in nodes/connectors and installed plugins
@@ -81,6 +82,7 @@ app.include_router(connections_router)
 app.include_router(subflows_router)
 app.include_router(serving_router)
 app.include_router(schedules_router)
+app.include_router(runtimes_router)
 app.include_router(tracking_router)
 
 
