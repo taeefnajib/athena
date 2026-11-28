@@ -26,7 +26,6 @@ from athena.core.subflows import expand
 from athena.schemas.pipeline import PipelineSpec
 from athena.serving import templates
 
-PREPROCESSING_CATEGORIES = {"quality", "feature", "balance"}
 BASE_REQUIREMENTS = ("fastapi", "uvicorn", "pandas", "numpy", "joblib", "pydantic")
 
 
@@ -75,22 +74,6 @@ def training_source(spec: PipelineSpec, node_id: str) -> tuple[str, int]:
     raise BundleError("Couldn't find the training data for this model (no X_train input upstream)")
 
 
-def upstream_preprocessing(spec: PipelineSpec, start: str) -> list[str]:
-    """Labels of preprocessing nodes upstream of ``start``: steps the served model does NOT replay."""
-    found: list[str] = []
-    frontier, seen = [start], {start}
-    while frontier:
-        nid = frontier.pop()
-        meta = NODE_META.get(spec.node(nid).type)
-        if meta and meta.category in PREPROCESSING_CATEGORIES:
-            found.append(meta.label)
-        for e in spec.edges:
-            if e.target == nid and e.source not in seen:
-                seen.add(e.source)
-                frontier.append(e.source)
-    return sorted(set(found))
-
-
 def feature_schema(X: pd.DataFrame) -> list[dict[str, Any]]:
     """Each feature's name, kind and a typical value (median / most frequent: never a real row)."""
     out = []
@@ -133,9 +116,15 @@ def requirements_for(model: Any) -> tuple[list[str], bool]:
     return reqs, needs_athena
 
 
-def build_bundle(name: str, model: Any, X: pd.DataFrame, info: dict[str, Any]) -> dict[str, Any]:
-    """Write the bundle; replaces an earlier bundle with the same name."""
+def build_bundle(name: str, model: Any, X: pd.DataFrame, info: dict[str, Any], steps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Write the bundle; replaces an earlier bundle with the same name. ``X`` is what requests look like (raw columns
+    when the preprocessing is replayed); ``steps`` turn it into the model's features (replay_core)."""
+    import inspect
+
     import joblib
+
+    from athena.serving import replay_core
+    steps = steps or [{"kind": "features", "columns": [str(c) for c in X.columns]}]
 
     if not hasattr(model, "predict"):
         raise BundleError(f"A {type(model).__name__} can't make predictions, so it can't be served")
@@ -146,13 +135,17 @@ def build_bundle(name: str, model: Any, X: pd.DataFrame, info: dict[str, Any]) -
     tmp.mkdir()
     features = feature_schema(X)
     task = "classification" if hasattr(model, "classes_") else "regression"
-    reqs, needs_athena = requirements_for(model)
+    reqs, needs_athena = requirements_for([model, steps])
     version = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     schema = {"name": name, "model": type(model).__name__, "version": version, "task": task, "features": features,
               "classes": [c.item() if hasattr(c, "item") else c for c in getattr(model, "classes_", [])],
               "source": {k: info.get(k) for k in ("pipeline", "node_id", "node_label", "run_id")},
-              "preprocessing_not_included": info.get("preprocessing", []), "needs_athena": needs_athena}
+              "model_features": steps[-1]["columns"], "preprocessing_not_included": info.get("preprocessing", []),
+              "preprocessing_replayed": info.get("replayed", []), "training_only": info.get("training_only", []),
+              "preprocessing_verified": info.get("verified", False), "preprocessing_note": info.get("note", ""), "needs_athena": needs_athena}
     joblib.dump(model, tmp / "model.joblib")
+    joblib.dump(steps, tmp / "preprocessing.joblib")
+    (tmp / "preprocess.py").write_text(inspect.getsource(replay_core), encoding="utf-8")
     (tmp / "schema.json").write_text(json.dumps(schema, indent=2, default=str), encoding="utf-8")
     (tmp / "example.json").write_text(json.dumps({"rows": [{f["name"]: f["example"] for f in features}]}, indent=2), encoding="utf-8")
     (tmp / "requirements.txt").write_text("\n".join(reqs) + "\n", encoding="utf-8")
@@ -164,8 +157,10 @@ def build_bundle(name: str, model: Any, X: pd.DataFrame, info: dict[str, Any]) -
     (tmp / "README.md").write_text(templates.README.format(
         name=name, slug=slug, node_label=info.get("node_label", ""), pipeline=info.get("pipeline", ""), run_id=info.get("run_id", ""),
         task=task, n_features=len(features),
-        preprocessing_note=(f"- **Send preprocessed features.** These upstream steps are not part of the served model: {', '.join(pre)}. "
-                            "Apply them to requests yourself (as the pipeline did before training).\n") if pre else "",
+        preprocessing_note=((f"- **Send preprocessed features.** These upstream steps are not part of the service: {', '.join(pre)}. "
+                             "Apply them to requests yourself (as the pipeline did before training).\n") if pre else
+                            (f"- Takes **raw rows**: the service replays the pipeline's fitted preprocessing ({', '.join(info.get('replayed') or [])}) "
+                             "before predicting.\n") if info.get("replayed") else ""),
         athena_note=("\n**Needs Athena's wrapper classes:** this model was built by an Athena node with its own estimator class, "
                      "so `pip install athena-backend` as well.\n") if needs_athena else ""), encoding="utf-8")
     shutil.rmtree(target, ignore_errors=True)
@@ -175,10 +170,12 @@ def build_bundle(name: str, model: Any, X: pd.DataFrame, info: dict[str, Any]) -
 
 def describe(path: Path) -> dict[str, Any]:
     schema = json.loads((path / "schema.json").read_text(encoding="utf-8"))
+    lists = ("preprocessing_not_included", "preprocessing_replayed", "training_only")
     return {"name": schema["name"], "slug": path.name, "path": str(path), "model": schema["model"], "task": schema["task"],
             "version": schema["version"], "features": schema["features"], "classes": schema.get("classes", []),
-            "source": schema.get("source", {}), "preprocessing_not_included": schema.get("preprocessing_not_included", []),
-            "needs_athena": schema.get("needs_athena", False)}
+            "source": schema.get("source", {}), "needs_athena": schema.get("needs_athena", False),
+            "preprocessing_verified": schema.get("preprocessing_verified", False),
+            "preprocessing_note": schema.get("preprocessing_note", ""), **{k: schema.get(k, []) for k in lists}}
 
 
 def list_bundles() -> list[dict[str, Any]]:
@@ -223,7 +220,10 @@ def bundle_from_run(name: str, spec: PipelineSpec, run_id: str, node_id: str, po
         X = X.to_frame()
     if not isinstance(X, pd.DataFrame):
         raise BundleError("The model's training data isn't a table")
+    from athena.serving.chain import build_chain
+    chain = build_chain(flat, run_id, src, X)
     meta = NODE_META.get(flat.node(node_id).type)
     info = {"pipeline": spec.name, "node_id": node_id, "node_label": meta.label if meta else node_id, "run_id": run_id,
-            "preprocessing": upstream_preprocessing(flat, src)}
-    return build_bundle(name, model, X, info)
+            "preprocessing": chain.not_replayed, "replayed": chain.replayed, "training_only": chain.training_only,
+            "verified": chain.verified, "note": chain.note}
+    return build_bundle(name, model, chain.raw, info, chain.steps)

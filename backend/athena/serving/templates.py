@@ -8,6 +8,7 @@ Runs without Athena (only the packages in requirements.txt):
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +19,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 HERE = Path(__file__).parent
+sys.path.insert(0, str(HERE))  # preprocess.py lives next to this file
+import preprocess  # noqa: E402
+
 SCHEMA = json.loads((HERE / "schema.json").read_text(encoding="utf-8"))
 MODEL = joblib.load(HERE / "model.joblib")
+STEPS = joblib.load(HERE / "preprocessing.joblib")  # the pipeline's fitted preprocessing (see preprocess.py)
 FEATURES = [f["name"] for f in SCHEMA["features"]]
 
 app = FastAPI(title=SCHEMA["name"], version=SCHEMA["version"],
@@ -66,7 +71,10 @@ def schema() -> dict[str, Any]:
 
 @app.post("/predict")
 def predict(req: PredictRequest) -> dict[str, Any]:
-    df = _frame(req.rows)
+    try:
+        df = preprocess.apply(STEPS, _frame(req.rows))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     out: dict[str, Any] = {{"predictions": [_py(p) for p in MODEL.predict(df)]}}
     if SCHEMA["task"] == "classification" and hasattr(MODEL, "predict_proba"):
         classes = [_py(c) for c in getattr(MODEL, "classes_", [])]
@@ -115,11 +123,13 @@ class AthenaModel:
     def __init__(self) -> None:
         self.schema = json.loads((HERE / "schema.json").read_text(encoding="utf-8"))
         self.model = joblib.load(HERE / "model.joblib")
+        self.steps = joblib.load(HERE / "preprocessing.joblib")
         self.features = [f["name"] for f in self.schema["features"]]
 
     @bentoml.api
     def predict(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
-        df = pd.DataFrame(rows)[self.features]
+        import preprocess
+        df = preprocess.apply(self.steps, pd.DataFrame(rows)[self.features])
         preds = [p.item() if isinstance(p, np.generic) else p for p in self.model.predict(df)]
         return {{"predictions": preds}}
 '''
@@ -127,6 +137,8 @@ class AthenaModel:
 BENTOFILE = '''service: "service_bentoml:AthenaModel"
 include:
   - "service_bentoml.py"
+  - "preprocess.py"
+  - "preprocessing.joblib"
   - "model.joblib"
   - "schema.json"
 python:
@@ -138,7 +150,7 @@ FROM python:{python}-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY service.py schema.json model.joblib ./
+COPY service.py preprocess.py schema.json model.joblib preprocessing.joblib ./
 EXPOSE 8000
 CMD ["python", "service.py", "--host", "0.0.0.0", "--port", "8000"]
 '''

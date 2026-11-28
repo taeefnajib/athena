@@ -32,3 +32,6 @@ class HandlerResult:
     outputs: list[Any]
     preview: ArtifactPreview | None = None
     metrics: dict[str, float] = field(default_factory=dict)
+    replay: dict[str, Any] | None = None
+    """What a preprocessing node learned, as a step ``athena/serving/replay_core.py`` can redo on new rows (so a
+    deployed model takes raw data). ``{"kind": "skip"}`` marks training-only steps (row filters, balancing)."""

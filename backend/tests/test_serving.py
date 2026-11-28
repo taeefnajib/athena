@@ -61,18 +61,19 @@ def test_bundle_contents(data_dir: Path):
     b = _bundle(spec, run_id, "rf", "Churn model")
     path = Path(b["path"])
     assert b["slug"] == "churn-model" and b["task"] == "classification" and b["model"] == "RandomForestClassifier"
-    assert sorted(p.name for p in path.iterdir()) == sorted(["model.joblib", "schema.json", "example.json", "requirements.txt", "service.py",
-                                                              "service_bentoml.py", "bentofile.yaml", "Dockerfile", "README.md"])
+    assert sorted(p.name for p in path.iterdir()) == sorted(["model.joblib", "preprocessing.joblib", "preprocess.py", "schema.json", "example.json",
+                                                              "requirements.txt", "service.py", "service_bentoml.py", "bentofile.yaml", "Dockerfile", "README.md"])
     X = pd.read_csv(BACKEND / "data.csv").drop(columns=["target"])
     assert [f["name"] for f in b["features"]] == list(X.columns) and all(f["kind"] == "number" for f in b["features"])
-    assert b["preprocessing_not_included"] == ["Missing Value Imputer"] and not b["needs_athena"]
+    assert b["preprocessing_replayed"] == ["Missing Value Imputer"] and b["preprocessing_not_included"] == [] and b["preprocessing_verified"]
+    assert not b["needs_athena"]
     reqs = (path / "requirements.txt").read_text().splitlines()
     import sklearn
     assert f"scikit-learn=={sklearn.__version__}" in reqs and any(r.startswith("fastapi==") for r in reqs)
     compile((path / "service.py").read_text(), "service.py", "exec")
     compile((path / "service_bentoml.py").read_text(), "service_bentoml.py", "exec")
     readme = (path / "README.md").read_text()
-    assert "Missing Value Imputer" in readme and "docker build -t churn-model" in readme
+    assert "raw rows" in readme and "Missing Value Imputer" in readme and "docker build -t churn-model" in readme
     example = json.loads((path / "example.json").read_text())["rows"][0]
     assert set(example) == set(X.columns)
     assert not (X == pd.Series(example)).all(axis=1).any()  # medians, not a real row from the data
@@ -144,3 +145,82 @@ def test_endpoint_exits_when_athena_goes_away(data_dir: Path):
         time.sleep(0.2)
     assert not ep.alive()
     assert not endpoints.status(b["slug"])["running"]
+
+
+def _messy_csv(tmp: Path) -> Path:
+    """Missing values, a text category, a date: what a real export looks like."""
+    import numpy as np
+    rng = np.random.default_rng(0)
+    n = 240
+    df = pd.DataFrame({
+        "age": rng.normal(40, 10, n).round(), "income": rng.normal(50, 15, n),
+        "plan": rng.choice(["basic", "plus", "pro"], n), "signup": pd.date_range("2024-01-01", periods=n, freq="D").astype(str),
+    })
+    df.loc[::17, "income"] = np.nan
+    df["target"] = ((df["income"].fillna(50) > 52) | (df["plan"] == "pro")).astype(int)
+    path = tmp / "messy.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
+def _messy_spec(csv: Path, extra_nodes=(), extra_edges=(), first="imp") -> PipelineSpec:
+    return PipelineSpec.model_validate({"name": "messy", "nodes": [
+        _n("csv", "csv_loader", path=str(csv)), _n("imp", "imputer", strategy="median"),
+        _n("dates", "date_feat", col="signup", features="month,weekday"), _n("ohe", "ohe", cols="plan"),
+        _n("sc", "scaler", method="RobustScaler"), _n("sel", "col_selector", mode="exclude", cols="signup"),
+        _n("tt", "train_test", stratify=True), _n("rf", "rf", n_estimators=25), *extra_nodes,
+    ], "edges": [_e("a", "csv", first), _e("b", "imp", "dates"), _e("c", "dates", "ohe"), _e("d", "ohe", "sc"),
+                 _e("e", "sc", "sel"), _e("f", "sel", "tt"), _e("g", "tt", "rf", 0, 0), _e("h", "tt", "rf", 1, 1), *extra_edges]})
+
+
+def test_replayed_preprocessing_reproduces_the_test_set_exactly(data_dir: Path):
+    """The bundle's preprocessing, run on the raw CSV rows of the test split, must give the pipeline's X_test."""
+    import joblib
+
+    from athena.core.artifacts import load_output
+    from athena.serving import replay_core
+    csv = _messy_csv(data_dir)
+    spec = _messy_spec(csv)
+    run_id = _run(spec, data_dir)
+    b = _bundle(spec, run_id, "rf", "messy")
+    assert b["preprocessing_verified"] and b["preprocessing_not_included"] == []
+    assert b["preprocessing_replayed"] == ["Missing Value Imputer", "Date Feature Extractor", "One-Hot Encoder", "Scaler", "Column Selector"]
+    assert [f["name"] for f in b["features"]] == ["age", "income", "plan", "signup"]  # raw columns, no target
+    steps = joblib.load(Path(b["path"]) / "preprocessing.joblib")
+    X_test = load_output(run_id, "tt", 2)
+    raw = pd.read_csv(csv).drop(columns=["target"]).loc[X_test.index]
+    pd.testing.assert_frame_equal(replay_core.apply(steps, raw), X_test, check_dtype=False)
+
+    assert client.post(f"/api/serving/endpoints/{b['slug']}").json()["running"]
+    raw_row = {"age": 35, "income": None, "plan": "pro", "signup": "2024-03-05"}  # a missing value and a category, as raw data
+    res = client.post(f"/api/serving/endpoints/{b['slug']}/predict", json={"rows": [raw_row, {**raw_row, "plan": "enterprise"}]}).json()
+    assert res["status"] == 200 and len(res["response"]["predictions"]) == 2  # an unseen category encodes as all-zero, like training
+    bad = client.post(f"/api/serving/endpoints/{b['slug']}/predict", json={"rows": [{**raw_row, "age": "old"}]}).json()
+    assert bad["status"] == 422
+
+
+def test_unsupported_step_cuts_the_chain(data_dir: Path):
+    csv = _messy_csv(data_dir)
+    split = _n("split", "validator")  # passes the data through but records no replay step
+    spec = _messy_spec(csv, extra_nodes=[split], extra_edges=[_e("z", "split", "imp")], first="split")
+    b = _bundle(spec, _run(spec, data_dir), "rf", "cut")
+    assert "Data Validator" in b["preprocessing_not_included"]
+    assert b["preprocessing_replayed"] == ["Missing Value Imputer", "Date Feature Extractor", "One-Hot Encoder", "Scaler", "Column Selector"]
+    assert b["preprocessing_verified"]
+
+
+def test_a_replay_that_does_not_reproduce_training_is_dropped(data_dir: Path, monkeypatch):
+    from athena.serving import chain
+    real = chain.replay_core.apply
+
+    def wrong(steps, df):  # a deliberately wrong replay: shifts every number
+        out = real(steps, df)
+        return out + 1.0
+
+    monkeypatch.setattr(chain.replay_core, "apply", wrong)
+    csv = _messy_csv(data_dir)
+    spec = _messy_spec(csv)
+    b = _bundle(spec, _run(spec, data_dir), "rf", "wrong")
+    assert not b["preprocessing_verified"] and b["preprocessing_replayed"] == []
+    assert "Scaler" in b["preprocessing_not_included"] and "didn't reproduce" in b["preprocessing_note"]
+    assert "plan_pro" in [f["name"] for f in b["features"]]  # back to model-ready features

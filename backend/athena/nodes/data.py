@@ -213,6 +213,7 @@ class DataSampleHandler:
             outputs=[result],
             preview=preview_dataframe(result),
             metrics={"rows": float(len(result)), "cols": float(len(result.columns))},
+            replay={"kind": "skip"},  # sampling rows only applies to training data
         )
 
 

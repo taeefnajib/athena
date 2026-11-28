@@ -42,7 +42,8 @@ class SmoteHandler:
         result = pd.DataFrame(X_res, columns=X.columns)
         result[target_col] = y_res
         ctx.logger.info("SMOTE resampled", before=len(df), after=len(result))
-        return HandlerResult(
+        return HandlerResult(replay={"kind": "skip"},  # balancing only applies to training data
+           
             outputs=[result],
             preview=preview_dataframe(result),
             metrics={"before": float(len(df)), "after": float(len(result))},
@@ -89,7 +90,8 @@ class UndersampleHandler:
         result = pd.DataFrame(X_res, columns=feature_cols)
         result[target_col] = y_res
         ctx.logger.info("Undersampled", before=len(df), after=len(result))
-        return HandlerResult(
+        return HandlerResult(replay={"kind": "skip"},  # balancing only applies to training data
+           
             outputs=[result],
             preview=preview_dataframe(result),
             metrics={"before": float(len(df)), "after": float(len(result))},
@@ -128,7 +130,8 @@ class OversampleHandler:
         result = pd.DataFrame(X_res, columns=feature_cols)
         result[target_col] = y_res
         ctx.logger.info("Oversampled", before=len(df), after=len(result))
-        return HandlerResult(
+        return HandlerResult(replay={"kind": "skip"},  # balancing only applies to training data
+           
             outputs=[result],
             preview=preview_dataframe(result),
             metrics={"before": float(len(df)), "after": float(len(result))},
@@ -162,7 +165,8 @@ class ClassWeightHandler:
         ctx.logger.info("Class weights computed", weights=weight_map)
         from athena.schemas.artifacts import TextPreview
         text = "Class weights:\n" + "\n".join(f"  {cls}: {w:.4f}" for cls, w in weight_map.items())
-        return HandlerResult(
+        return HandlerResult(replay={"kind": "skip"},  # balancing only applies to training data
+           
             outputs=[df],
             preview=TextPreview(text=text),
             metrics={str(k): float(v) for k, v in weight_map.items()},

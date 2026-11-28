@@ -62,6 +62,7 @@ class ImputerHandler:
             outputs=[df],
             preview=preview_dataframe(df),
             metrics={"missing_filled": float(missing_before)},
+            replay={"kind": "columns_transform", "transformer": imp, "cols": target_cols} if target_cols else {"kind": "skip"},
         )
 
 
@@ -94,6 +95,7 @@ class DupRemoverHandler:
             outputs=[df],
             preview=preview_dataframe(df),
             metrics={"removed": float(removed), "remaining": float(len(df))},
+            replay={"kind": "skip"},  # removing duplicate rows only applies to training data
         )
 
 
@@ -139,6 +141,7 @@ class OutlierHandler:
                 outputs=[df, df.iloc[0:0]],
                 preview=preview_dataframe(df),
                 metrics={"outliers_found": 0.0, "remaining": float(len(df))},
+                replay={"kind": "skip"},
             )
 
         if cfg.method == "IQR":
@@ -177,6 +180,8 @@ class OutlierHandler:
             outputs=[result, outlier_rows],
             preview=preview_dataframe(result),
             metrics={"outliers_found": float(n_outliers), "remaining": float(len(result))},
+            # removing rows is training-only; clipping / flagging change values and aren't replayed yet
+            replay={"kind": "skip"} if cfg.action == "remove" else None,
         )
 
 
@@ -219,6 +224,7 @@ class ColRenameHandler:
             outputs=[df],
             preview=preview_dataframe(df),
             metrics={"renamed": float(len(rename_map))},
+            replay={"kind": "rename", "mapping": rename_map},
         )
 
 
@@ -269,6 +275,7 @@ class TypeConvHandler:
             outputs=[df],
             preview=preview_dataframe(df),
             metrics={"converted": float(converted)},
+            replay={"kind": "astype", "rules": [tuple(p.strip() for p in ln.split(":", 1)) for ln in cfg.rules.splitlines() if ":" in ln]},
         )
 
 
