@@ -77,6 +77,20 @@ async def test_tracked_run_logs_params_metrics_code_and_model():
 
 
 @pytest.mark.asyncio
+async def test_tracked_run_keeps_the_evidently_reports(tmp_path: Path):
+    pytest.importorskip("evidently")
+    dq = [{"id": "dq", "type": "data_quality", "position": {"x": 0, "y": 1}, "config": {}}]
+    events = await _run(_pipeline("quality", {"enabled": True, "log_models": False}, dq,
+                              [{"id": "e8", "source": "n1", "target": "dq"}]), "trk-dq")
+    assert events[-1].status == "completed"
+    run_id = _tracking_event(events)["run_id"]
+    reports = [a.path for a in _client().list_artifacts(run_id, "athena/reports/dq")]
+    assert reports == ["athena/reports/dq/report.html"]
+    local = _client().download_artifacts(run_id, "athena/reports/dq/report.html", str(tmp_path))
+    assert "<html" in Path(local).read_text(encoding="utf-8").lower()
+
+
+@pytest.mark.asyncio
 async def test_untracked_pipeline_logs_nothing():
     events = await _run(_pipeline("plain", None), "trk-2")
     assert not any(e.type == "run_info" for e in events)

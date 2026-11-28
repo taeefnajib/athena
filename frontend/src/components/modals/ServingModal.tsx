@@ -13,6 +13,7 @@ interface Bundle {
   evaluation: Array<{ node: string; id: string; report: Record<string, number> }>
   quality_gates: Array<{ node: string; id: string; rules: string; on_fail: string; passed: boolean | null }>
   endpoint: { running: boolean; url: string | null }
+  monitoring: { logs_requests: boolean; requests_logged: number; request_log: string }
 }
 
 const btn: React.CSSProperties = { fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', cursor: 'pointer' }
@@ -78,6 +79,7 @@ export function ServingModal() {
     const res = await call<{ status: number; response: unknown }>(`/api/serving/endpoints/${slug}/predict`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     setResponse(`HTTP ${res.status}\n${JSON.stringify(res.response, null, 2)}`)
+    await refresh(slug)  // the logged-request count
   })
 
   return (
@@ -170,6 +172,22 @@ export function ServingModal() {
                     </div>
                     <button style={{ ...primary, marginTop: 8 }} disabled={busy === 'predict'} onClick={() => test(current.slug)}>{busy === 'predict' ? 'Predicting…' : 'Send request'}</button>
                   </>
+                )}
+                <div style={label}>Monitoring</div>
+                {current.monitoring?.logs_requests ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
+                    {current.monitoring.requests_logged.toLocaleString()} request row(s) logged
+                    {current.endpoint.running && (
+                      <> · <a href={`/api/serving/endpoints/${encodeURIComponent(current.slug)}/metrics`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Prometheus metrics</a>
+                        {' '}(scrape <span style={mono}>{current.endpoint.url}/metrics</span>)</>
+                    )}
+                    <div>
+                      To check live traffic for drift, add <b>Endpoint Requests</b> (model: <span style={mono}>{current.name}</span>) as the
+                      current input of <b>Data Drift Report</b> or <b>Prediction Drift</b>, with the training data as the reference.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>This bundle was packaged before monitoring existed: deploy the model again to get request logs and metrics.</div>
                 )}
                 <div style={label}>Quality gates</div>
                 {current.quality_gates.length === 0 && (

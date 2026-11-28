@@ -177,7 +177,8 @@ def run_spec(
         emit({"type": "node_finish", "node_id": node_id, "status": "success",
               "duration_ms": int((time.monotonic() - start) * 1000),
               "preview": result.preview.model_dump() if result.preview else None,
-              "metrics": result.metrics, "cached": hit is not None})
+              "metrics": result.metrics, "cached": hit is not None,
+              "documents": sorted(getattr(result, "documents", None) or {})})  # results cached before the field existed lack it
 
     return finish("completed")
 

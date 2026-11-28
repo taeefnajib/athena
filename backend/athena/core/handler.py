@@ -35,3 +35,6 @@ class HandlerResult:
     replay: dict[str, Any] | None = None
     """What a preprocessing node learned, as a step ``athena/serving/replay_core.py`` can redo on new rows (so a
     deployed model takes raw data). ``{"kind": "skip"}`` marks training-only steps (row filters, balancing)."""
+    documents: dict[str, str] = field(default_factory=dict)
+    """Full HTML reports by file name (e.g. Evidently's ``report.html``), too large for a preview: listed in
+    ``node_finish.documents`` and served by ``GET /api/runs/{run}/documents/{node}/{name}``."""

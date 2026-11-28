@@ -6,6 +6,7 @@ interface NodeRunState {
   error?: { message: string; traceback: string }
   duration_ms?: number
   cached?: boolean
+  documents?: string[]
 }
 
 interface ExecutionState {
@@ -58,6 +59,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
       error: event.error,
       duration_ms: event.duration_ms,
       cached: event.cached ?? false,
+      documents: event.documents ?? [],
     }
     const updates: Partial<ExecutionState> = {
       currentNodeId: null,

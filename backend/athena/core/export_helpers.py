@@ -83,6 +83,9 @@ HELPERS: dict[str, object] = {
     "_AthenaHasMorePaginator": lambda: _class_source("athena.connectors.saas_paginator._AthenaHasMorePaginator"),
     "_athena_check_rules": lambda: _class_source("athena.nodes.gates._athena_check_rules"),
     "_athena_fairness": lambda: _class_source("athena.nodes.gates._athena_fairness"),
+    **{name: (lambda n=name: _class_source(f"athena.nodes.drift.{n}")) for name in (
+        "_athena_evidently_drift", "_athena_prediction_drift", "_athena_data_quality")},
+    "_athena_endpoint_requests": lambda: _class_source("athena.nodes.traffic._athena_endpoint_requests"),
     "_athena_snapshot": lambda: _class_source("athena.nodes.snapshot._athena_snapshot"),
     "_StatsBase": lambda: _class_source("athena.nodes.stats._StatsBase"),
     "_StatsOLS": lambda: _class_source("athena.nodes.stats._StatsOLS"),
@@ -94,6 +97,7 @@ HELPER_DEPS: dict[str, list[str]] = {
     "_athena_series": ["_athena_date_col"], "_athena_ts_split": ["_athena_date_col"],
     "_athena_forecast_table": ["_athena_series", "_athena_season", "_athena_forecast", "_athena_forecast_metrics"],
     "_athena_backtest_table": ["_athena_series", "_athena_season", "_athena_forecast", "_athena_forecast_metrics"],
+    "_athena_prediction_drift": ["_athena_evidently_drift"],
     "_athena_auto_k": ["_athena_silhouette"], "_athena_cluster_report": ["_athena_silhouette"],
 }
 HELPER_IMPORTS = {"_AthenaHasMorePaginator": ["from dlt.sources.helpers.rest_client.paginators import BasePaginator"],

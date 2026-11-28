@@ -6,7 +6,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from athena.core.artifacts import ArtifactNotFound, load_output
+from athena.core.artifacts import ArtifactNotFound, load_output, load_result
 from athena.core.executor import cancel_run, get_active_run_id, reset_active_run
 
 router = APIRouter(prefix="/api/runs")
@@ -67,6 +67,29 @@ async def download_artifact(run_id: str, node_id: str, port: int, format: str = 
     except (ValueError, TypeError) as exc:
         raise HTTPException(400, detail={"detail": str(exc), "code": "ARTIFACT_NOT_DOWNLOADABLE"}) from exc
     return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/{run_id}/documents/{node_id}/{name}")
+async def node_document(run_id: str, node_id: str, name: str, download: bool = False) -> Response:
+    """A full HTML report a node produced (Evidently's, for the monitoring nodes).
+
+    It's served sandboxed (CSP ``sandbox allow-scripts``): its scripts run, for the charts, but in an opaque origin
+    that can't read Athena's pages or call its API as if it were Athena."""
+    def build() -> str:
+        result = load_result(run_id, node_id)
+        docs = getattr(result, "documents", None) or {}
+        if name not in docs:
+            raise ArtifactNotFound(f"Node {node_id!r} has no report {name!r} in this run" + (f" (it has: {', '.join(docs)})" if docs else ""))
+        return str(docs[name])
+    try:
+        html = await anyio.to_thread.run_sync(build)
+    except ArtifactNotFound as exc:
+        raise _missing(exc) from exc
+    disposition = "attachment" if download else "inline"
+    return Response(html, media_type="text/html; charset=utf-8", headers={
+        "Content-Security-Policy": "sandbox allow-scripts allow-popups allow-downloads",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'{disposition}; filename="{node_id}_{name}"'})
 
 
 @router.get("/{run_id}/profile/{node_id}/{port}")

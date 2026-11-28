@@ -61,6 +61,11 @@ export async function fetchProfile(runId: string, nodeId: string, port: number, 
   return body as Profile
 }
 
+/** A full HTML report a node produced (served sandboxed by the backend). */
+export function documentUrl(runId: string, nodeId: string, name: string, download = false): string {
+  return `/api/runs/${encodeURIComponent(runId)}/documents/${encodeURIComponent(nodeId)}/${encodeURIComponent(name)}${download ? '?download=1' : ''}`
+}
+
 export function artifactUrl(runId: string, nodeId: string, port: number, format: 'csv' | 'parquet' = 'csv'): string {
   return `/api/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(nodeId)}/${port}?format=${format}`
 }

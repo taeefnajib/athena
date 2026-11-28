@@ -6,6 +6,7 @@ Together the pipelines cover every node that has an export template (see test_ev
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -333,6 +334,46 @@ def test_quality_gate_and_fairness(tmp_path: Path):
     g.n("warn", "quality_gate", rules="f1 >= 0.999", on_fail="warn"); g.e("lr_m", "warn", 0, 0)
     ns = run_both(g.spec(), tmp_path)
     assert ns["report_gate"]["passed"] == 1.0 and ns["report_warn"]["passed"] == 0.0
+
+
+def test_evidently_monitoring(tmp_path: Path):
+    pytest.importorskip("evidently")
+    from tests.test_gates import groups_csv
+    ref_csv = groups_csv(tmp_path)
+    cur = pd.read_csv(ref_csv).drop(columns=["target"]).assign(x1=lambda d: d["x1"] + 0.7)  # new traffic, shifted
+    cur.to_csv(tmp_path / "cur.csv", index=False)
+    g = G()
+    g.n("ref", "csv_loader", path=str(ref_csv))
+    g.n("cur", "csv_loader", path=str(tmp_path / "cur.csv"))
+    g.n("tt", "train_test", stratify=True); g.e("ref", "tt")
+    g.model("lr", "log_reg", "tt")
+    g.n("drift", "evidently_drift"); g.e("cur", "drift", 0, 0); g.e("ref", "drift", 0, 1)
+    g.n("drift2", "evidently_drift", columns="x1, x2", num_method="wasserstein", num_threshold=0.2, drift_share=0.4)
+    g.e("cur", "drift2", 0, 0); g.e("ref", "drift2", 0, 1)
+    g.n("pd", "prediction_drift"); g.e("lr", "pd", 0, 0); g.e("tt", "pd", 0, 1); g.e("cur", "pd", 0, 2)
+    g.n("dq", "data_quality"); g.e("cur", "dq", 0, 0); g.e("ref", "dq", 0, 1)
+    g.n("dq1", "data_quality"); g.e("cur", "dq1", 0, 0)
+    g.n("gate", "quality_gate", rules="drifted_columns <= 1\nprediction_drift == 1", on_fail="warn")
+    g.e("drift", "gate", 0, 0); g.e("pd", "gate", 0, 1)
+    ns = run_both(g.spec(), tmp_path)
+    assert ns["report_drift"]["drifted_columns"] == 1 and ns["report_pd"]["prediction_drift"] == 1.0
+    assert ns["report_gate"]["passed"] == 1.0
+
+
+def test_endpoint_requests(tmp_path: Path, monkeypatch):
+    from athena.config import settings
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    bundle = tmp_path / "models" / "churn-model"
+    (bundle / "logs").mkdir(parents=True)
+    (bundle / "schema.json").write_text("{}", encoding="utf-8")
+    rows = [{"age": 30 + i, "plan": "pro" if i % 2 else "basic", "income": None if i == 3 else 40.5 + i, "prediction": i % 2,
+             "timestamp": f"2026-11-28T10:00:0{i}.000+00:00"} for i in range(8)]
+    (bundle / "logs" / "requests.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    g = G()
+    g.n("all", "endpoint_requests", model="Churn model")
+    g.n("tail", "endpoint_requests", model="churn-model", last_n=3, include_prediction=False)
+    ns = run_both(g.spec(), tmp_path)
+    assert len(ns["df_all"]) == 8 and list(ns["df_tail"].columns) == ["age", "plan", "income", "timestamp"]
 
 
 def test_every_template_is_exercised():

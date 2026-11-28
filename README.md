@@ -198,6 +198,16 @@ After a run, select a model node (or Pipeline Wrapper, Calibration, Decision Thr
 - **Fairness Check** compares a binary classifier across the groups of a column you choose (region, gender, a one-hot column…): each group's selection rate, true-positive rate and accuracy, plus the demographic parity difference, equal opportunity difference and disparate impact ratio (below 0.8 breaks the common four-fifths rule of thumb). Gate on them like any metric.
 - **Model cards:** every deployed bundle includes `MODEL_CARD.md` with the model, its data and preprocessing, the metrics and fairness results from the run, the quality gates it passed (or didn't), and sections for you to complete (intended use, limitations). The Serving window shows the same evidence.
 
+### Monitoring: drift, data quality and live traffic
+
+Install the extra once: `uv sync --extra monitoring` (Evidently).
+
+- **Data Drift Report** compares a *current* table with a *reference* one (usually the training data), column by column, with [Evidently](https://www.evidentlyai.com/): K-S or chi-square by default, or the test you choose (Wasserstein, PSI, Jensen-Shannon…) and its threshold. The report says how many columns drifted (`drifted_columns`, `share_drifted`, `dataset_drift`), and the inspector's **Open report** shows Evidently's full interactive report.
+- **Prediction Drift** runs the model on both tables and compares its predictions (and, for a binary classifier, its probabilities): `prediction_drift`, `probability_drift`.
+- **Data Quality Report** summarises a table (missing values, duplicated rows, constant or empty columns, per-column statistics), side by side with a reference when one is connected.
+- **Gate on them** like any metric: `drifted_columns == 0`, `prediction_drift == 0`, `missing_share <= 0.05` in a Quality Gate. With MLflow tracking on, the HTML reports are logged with the run (`athena/reports/<node>/`).
+- **Live traffic:** local endpoints log every predicted row (its raw features, the prediction and a timestamp) to `logs/requests.jsonl` in their bundle and expose **Prometheus metrics** at `/metrics` (requests by status, latency histogram, rows, predictions by class). The **Endpoint Requests** node reads that log as a table: connect it as the *current* input of Data Drift Report or Prediction Drift, with the training data as the reference, to see whether what the model receives still looks like what it learned from. Outside Athena, `python service.py --log-requests requests.jsonl` does the same.
+
 ### Comparing versions
 
 **Compare** (top bar) shows what changed on the canvas since a saved pipeline: nodes added, removed or changed (each setting's old → new value, including execution settings and changes inside subflows), connection changes and pipeline settings. **Show on canvas** tags the new and changed nodes until you press **Clear**. Nodes are matched by id, so a node whose settings changed shows as changed, not as removed and re-added.
@@ -314,7 +324,7 @@ cd backend
 uv run pytest
 ```
 
-Expected: **43 tests passing** across DAG, executor, handlers, codegen, and API layers.
+Optional extras (`mlflow`, `automl`, `catboost`, `optuna`, `api`, `stats`, `monitoring`) have their own tests, which are skipped when the extra isn't installed: `uv sync --all-extras` runs everything.
 
 ```bash
 # Verbose output

@@ -157,6 +157,8 @@ Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**, **Code** 
 
 **Serving** (`modals/ServingModal.tsx`): Deploy in a model output's actions (`RightSidebar/OutputActions.tsx`) sets `uiStore.deployTarget` and opens the modal, which packages the model through `/api/serving/bundles`, starts / stops local endpoints, and has a test console that calls the endpoint through the backend (no CORS, no direct port access). It shows what the service does with requests: the replayed preprocessing (`preprocessing_replayed`, verified or not), training-only steps that are skipped, and a warning listing `preprocessing_not_included` when some steps can't be replayed.
 
+**Reports and monitoring**: a node whose `node_finish` lists `documents` (the Evidently nodes) gets *Open report* (new tab) and a download in `RightSidebar/OutputActions.tsx`, via `lib/profile.ts: documentUrl`. The Serving modal's Monitoring section shows how many request rows the endpoint has logged, links its Prometheus metrics (through the backend), and explains how to compare live traffic with the training data (Endpoint Requests → Data Drift Report).
+
 **Tidy layout** (canvas controls) runs `autoLayout` (dagre, left to right) and applies it with `applyLayout` as one undo step that first records the current positions, so Ctrl+Z restores them exactly. It only ever runs on that explicit command.
 
 - **Settings**: render a form derived from `node.config` schema. Each `ConfigField.type` maps to a component in `components/ui/`. Update the store on `onChange` for toggles/selects, on `onBlur` for text/textarea (avoid spamming history during typing). Validation: numbers must be numbers; required fields highlighted on save.

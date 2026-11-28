@@ -136,4 +136,6 @@ export interface NodeFinishEvent {
   error?: { message: string; traceback: string }
   /** True when the backend reused this node's result from an earlier run instead of recomputing it. */
   cached?: boolean
+  /** Full HTML reports the node produced (e.g. Evidently's), served by GET /api/runs/{run}/documents/{node}/{name}. */
+  documents?: string[]
 }
