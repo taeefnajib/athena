@@ -378,6 +378,36 @@ def test_endpoint_requests(tmp_path: Path, monkeypatch):
     assert len(ns["df_all"]) == 8 and list(ns["df_tail"].columns) == ["age", "plan", "income", "timestamp"]
 
 
+def test_batch_predict(tmp_path: Path, monkeypatch):
+    """Batch Predict loads a packaged model from its bundle: Athena and the script score the same rows identically."""
+    import uuid
+
+    from athena.config import settings
+    from athena.serving.bundle import bundle_from_run
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    t = G()
+    t.n("csv", "csv_loader", path=str(BACKEND / "data.csv"))
+    t.n("imp", "imputer", strategy="median")
+    t.n("tt", "train_test")
+    t.n("rf", "rf", n_estimators=15)
+    t.e("csv", "imp")
+    t.e("imp", "tt")
+    t.e("tt", "rf", 0, 0)
+    t.e("tt", "rf", 1, 1)
+    train = t.spec()
+    run_id = str(uuid.uuid4())
+    assert run_spec(train, run_id, lambda e: None, lambda: False, tmp_path / "cache" / run_id) == "completed"
+    bundle_from_run("Churn model", train, run_id, "rf", 0)
+    g = G()
+    g.n("new", "csv_loader", path=str(BACKEND / "data.csv"))
+    g.n("bp", "batch_predict", model="Churn model")
+    g.n("lean", "batch_predict", model="churn-model", probabilities=False, keep_columns=False)
+    g.e("new", "bp")
+    g.e("new", "lean")
+    ns = run_both(g.spec(), tmp_path)
+    assert "proba_1" in ns["df_bp"].columns and list(ns["df_lean"].columns) == ["prediction"]
+
+
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""

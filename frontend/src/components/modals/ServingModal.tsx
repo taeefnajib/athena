@@ -230,6 +230,11 @@ export function ServingModal() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {current.features.map(f => <span key={f.name} style={{ ...mono, fontSize: 11, padding: '2px 8px', borderRadius: 99, border: '1px solid var(--border2)', color: 'var(--text-dim)' }}>{f.name}: {f.kind}</span>)}
                 </div>
+                <div style={label}>Batch predictions</div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
+                  Score a whole table with the same preprocessing: add <b>Batch Predict</b> (model: <span style={mono}>{current.name}</span>) after a loader,
+                  then CSV Export, and put the pipeline on a schedule. Outside Athena: <span style={mono}>python service.py --predict-file new.csv --output predictions.csv</span>.
+                </div>
                 <div style={label}>Build</div>
                 <BuildSection slug={current.slug} build={current.build} tools={tools}
                               onStart={target => startBuild(current.slug, target)} onCancel={() => cancelBuild(current.slug)} />
@@ -237,6 +242,7 @@ export function ServingModal() {
                 <pre style={{ ...mono, margin: 0, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-dim)', padding: 10, whiteSpace: 'pre-wrap' }}>
 {`# from the unzipped folder (${current.slug}/), no Athena needed
 pip install -r requirements.txt && python service.py --port 8000
+python service.py --predict-file new.csv --output predictions.csv   # batch
 docker build -t ${current.slug} . && docker run -p 8000:8000 ${current.slug}
 bentoml serve service_bentoml:AthenaModel     # pip install bentoml`}
                 </pre>

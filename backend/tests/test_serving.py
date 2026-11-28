@@ -303,3 +303,49 @@ def test_a_merge_is_replayed_as_a_lookup(data_dir: Path):
     s = spec("outer")  # an outer join adds rows: not a lookup, so the chain stops there
     b = _bundle(s, _run(s, data_dir), "rf", "outer")
     assert "Data Merge / Join" not in " ".join(b["preprocessing_replayed"]) and b["preprocessing_replayed"] == ["Missing Value Imputer", "One-Hot Encoder", "Column Selector"]
+
+
+def test_batch_predict_node_matches_the_bundles_batch_mode(data_dir: Path):
+    """Batch Predict (in a pipeline) and `python service.py --predict-file` (outside Athena) score a raw file identically."""
+    import subprocess
+    import sys
+
+    from athena.nodes.batch import _athena_bundle_predict
+    csv = _messy_csv(data_dir)
+    spec = _messy_spec(csv)
+    b = _bundle(spec, _run(spec, data_dir), "rf", "Batch churn")
+    raw = pd.read_csv(csv).drop(columns=["target"]).head(60)
+    raw.loc[3, "income"] = None  # raw data, missing values included
+    src, dst = data_dir / "new_rows.csv", data_dir / "scored.parquet"
+    raw.to_csv(src, index=False)
+
+    scoring = PipelineSpec.model_validate({"name": "score", "nodes": [
+        _n("new", "csv_loader", path=str(src)), _n("bp", "batch_predict", model="Batch churn")],
+        "edges": [_e("a", "new", "bp")]})
+    events: list[dict] = []
+    artifacts: dict = {}
+    assert run_spec(scoring, "batch", events.append, lambda: False, data_dir / "cache" / "batch", artifacts_out=artifacts) == "completed"
+    node_out = artifacts[("bp", 0)]
+    assert list(node_out.columns) == [*raw.columns, "prediction", "proba_0", "proba_1"] and len(node_out) == 60
+    finish = next(e for e in events if e["type"] == "node_finish" and e["node_id"] == "bp")
+    assert finish["metrics"]["rows"] == 60 and finish["metrics"]["predicted_0"] + finish["metrics"]["predicted_1"] == 60
+
+    done = subprocess.run([sys.executable, "service.py", "--predict-file", str(src), "--output", str(dst)],
+                          cwd=b["path"], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert "Scored 60 row(s)" in done.stdout
+    pd.testing.assert_frame_equal(pd.read_parquet(dst), node_out.reset_index(drop=True), check_dtype=False)
+
+    lean = _athena_bundle_predict(b["path"], raw, probabilities=False, keep_columns=False)
+    assert list(lean.columns) == ["prediction"]
+    with pytest.raises(ValueError, match="Missing feature"):
+        _athena_bundle_predict(b["path"], raw.drop(columns=["plan"]))
+    bad = subprocess.run([sys.executable, "service.py", "--predict-file", str(data_dir / "nope.csv")], cwd=b["path"], capture_output=True, text=True, timeout=120)
+    assert bad.returncode == 1 and "error:" in bad.stderr
+
+    unknown = PipelineSpec.model_validate({"name": "x", "nodes": [_n("new", "csv_loader", path=str(src)), _n("bp", "batch_predict", model="nope")],
+                                           "edges": [_e("a", "new", "bp")]})
+    events = []
+    assert run_spec(unknown, "unknown", events.append, lambda: False, data_dir / "cache" / "unknown") == "error"
+    err = next(e for e in events if e["type"] == "node_finish" and e["status"] == "error")["error"]["message"]
+    assert "No packaged model named 'nope'" in err and "batch-churn" in err
