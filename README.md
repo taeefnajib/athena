@@ -353,6 +353,15 @@ Each node's inspector has an **Execution** section: a timeout, retries with back
 - For a remote cluster, add a **Ray cluster** connection (Connections → ＋ Ray cluster) with its address (`ray://head:10001`), then choose it in **Runs on**. Athena can send its own code with each task; the cluster needs the ML libraries the node uses (the connection's *Extra pip packages* can install them).
 - Install with `uv pip install 'athena-backend[ray]'`. Results are cached the same way wherever a node ran, logs arrive when a Ray node finishes, and the exported script always runs locally.
 
+**Kubernetes:** add a **Kubernetes cluster** connection and choose it in **Runs on** to run a node as a Kubernetes Job. Install the client with `uv pip install 'athena-backend[k8s]'`.
+
+- **Cluster access** comes from your kubeconfig (a context in it), or the service account when Athena runs inside the cluster. Nothing secret is stored in the connection.
+- **Container image:** Python with the libraries your nodes use, plus `fsspec` and your artifact store's driver (e.g. `s3fs`). Athena's own code is sent with each Job unless the image already has `athena-backend`. For example:
+  `FROM python:3.11-slim` + `RUN pip install pandas scikit-learn matplotlib pyarrow structlog pydantic pydantic-settings cloudpickle fsspec s3fs` (plus xgboost, lightgbm… if your nodes use them). Matching the library versions you train with locally keeps results identical.
+- **Artifact store:** where the node's inputs and outputs are exchanged, e.g. `s3://my-bucket/athena`. Athena reaches it with its usual credentials (or a saved storage connection); pods reach it through cluster identity (a service account) or a Secret loaded as environment variables.
+- The node's CPU, memory and GPUs become the pod's requests and limits (`nvidia.com/gpu`), and its timeout becomes the Job's deadline, so the pod stops even if Athena isn't around.
+- **Stop** deletes the Job. A wrong image fails the node straight away rather than at the deadline. A pod that crashes is kept for an hour for `kubectl logs`.
+
 
 ### Plugins
 

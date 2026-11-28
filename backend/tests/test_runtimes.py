@@ -52,7 +52,7 @@ def data_dir(tmp_path: Path, monkeypatch):
 def test_parse_and_check(data_dir: Path, monkeypatch):
     assert adapters.parse(None) == ("python", "") and adapters.parse("ray:gpu-box") == ("ray", "gpu-box")
     with pytest.raises(adapters.RuntimeUnavailable, match="Unknown runtime"):
-        adapters.parse("k8s")
+        adapters.parse("spark")
     with pytest.raises(adapters.RuntimeUnavailable, match="no connection"):
         adapters.parse("python:x")
     with pytest.raises(adapters.RuntimeUnavailable, match="No saved connection named 'nope'"):
@@ -106,7 +106,7 @@ def test_ray_runtime_gives_the_same_results(data_dir: Path, ray_cluster):
     status, events, _ = _run(bad, data_dir / "bad")
     err = next(e for e in events if e["type"] == "node_finish" and e["status"] == "error")["error"]
     assert status == "error" and "bad input on the cluster" in err["message"]
-    assert "run_in_ray_task" in err["traceback"]  # the traceback from the Ray worker
+    assert "remote.py" in err["traceback"] and "advanced.py" in err["traceback"]  # the traceback from the Ray worker
 
     from athena.config import settings as cfg
     cfg_before = cfg.allow_custom_code
