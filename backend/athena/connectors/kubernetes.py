@@ -27,18 +27,29 @@ class KubernetesConfig(BaseModel):
     ship_athena: bool = True
 
 
-def clients(cfg: KubernetesConfig) -> tuple[Any, Any]:
-    """(BatchV1Api, CoreV1Api) for the connection: the kubeconfig context, or in-cluster config."""
+def api_client(cfg: KubernetesConfig) -> Any:
+    """An ApiClient for the connection: the kubeconfig context, or in-cluster config."""
     from kubernetes import client, config
     if cfg.kubeconfig or cfg.context:
-        api = config.new_client_from_config(config_file=cfg.kubeconfig or None, context=cfg.context or None)
-    else:
-        try:
-            config.load_incluster_config()
-        except config.ConfigException:
-            config.load_kube_config()
-        api = client.ApiClient()
+        return config.new_client_from_config(config_file=cfg.kubeconfig or None, context=cfg.context or None)
+    try:
+        config.load_incluster_config()
+    except config.ConfigException:
+        config.load_kube_config()
+    return client.ApiClient()
+
+
+def clients(cfg: KubernetesConfig) -> tuple[Any, Any]:
+    """(BatchV1Api, CoreV1Api) for the connection."""
+    from kubernetes import client
+    api = api_client(cfg)
     return client.BatchV1Api(api), client.CoreV1Api(api)
+
+
+def custom_objects(cfg: KubernetesConfig) -> Any:
+    """CustomObjectsApi for the connection (KServe InferenceServices)."""
+    from kubernetes import client
+    return client.CustomObjectsApi(api_client(cfg))
 
 
 @connector(

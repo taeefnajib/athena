@@ -12,5 +12,6 @@ describe('buildSummary', () => {
     expect(buildSummary({ ...base, state: 'succeeded', finished: 142.4 })).toEqual({ tone: 'ok', text: 'Built Docker image churn:latest in 42 s.' })
     expect(buildSummary({ ...base, target: 'bento', state: 'failed', tag: '', finished: 103 }).text).toBe('The Bento build failed in 3 s: see the log.')
     expect(buildSummary({ ...base, state: 'cancelled', finished: 101 }).tone).toBe('bad')
+    expect(buildSummary({ ...base, target: 'push', state: 'succeeded', tag: 'ghcr.io/me/m:1', finished: 104 }).text).toBe('Pushed ghcr.io/me/m:1 in 4 s.')
   })
 })

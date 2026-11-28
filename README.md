@@ -222,6 +222,11 @@ After a run, select a model node (or Pipeline Wrapper, Calibration, Decision Thr
 - `service.py` (FastAPI: `POST /predict`, `GET /schema`, `GET /health`, interactive docs at `/docs`), `model.joblib`, `schema.json` (the features, their kinds and an example request built from medians, never a real row), pinned `requirements.txt`, a `Dockerfile`, a BentoML service with `bentofile.yaml`, and a README. It runs without Athena.
 - **Serving** (top bar) lists your packaged models. **Start endpoint** runs one locally (its own process, reachable only from this machine, stopped when Athena stops); the test console sends a request and shows the answer. **Download .zip** to run it elsewhere: `python service.py`, `docker build`, or `bentoml serve`.
 - **Build** turns a packaged model into a Docker image (`docker build`) or a Bento (`bentoml build`) with your own Docker / BentoML, in the background: the Serving window follows the build log and, when it's done, shows the command to run it (`docker run --rm -p 8000:8000 <name>:latest`). The first build downloads the base image and the pinned packages.
+- **Kubernetes (KServe):** to serve the model on a cluster with KServe, give the image a registry name in **Build** (e.g. `ghcr.io/you/churn-model:1`), build it, and **Push image** (after `docker login`). Then pick a **Kubernetes cluster** connection and **Deploy to KServe**.
+  - Athena creates or replaces the InferenceService, follows it until it's Ready and shows its URL; **Delete from KServe** removes it.
+  - Replicas can scale to zero when idle.
+  - The service answers KServe's V1 protocol (`POST /v1/models/<name>:predict` with `{"instances": [...]}`) as well as `/predict`.
+  - **Download manifest** gives the same InferenceService as YAML to `kubectl apply` yourself.
 
 - **Batch predictions:** the **Batch Predict** node scores a whole table with a packaged model (its preprocessing included) and adds `prediction` and `proba_<class>` columns; follow it with CSV Export and schedule the pipeline for recurring scoring. Outside Athena, the bundle does the same: `python service.py --predict-file new.csv --output predictions.csv` (CSV or Parquet).
 
