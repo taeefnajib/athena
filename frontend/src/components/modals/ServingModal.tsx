@@ -10,6 +10,8 @@ interface Bundle {
   source: { pipeline?: string; node_label?: string; run_id?: string }
   preprocessing_not_included: string[]; preprocessing_replayed: string[]; training_only: string[]
   preprocessing_verified: boolean; preprocessing_note: string; needs_athena: boolean
+  evaluation: Array<{ node: string; id: string; report: Record<string, number> }>
+  quality_gates: Array<{ node: string; id: string; rules: string; on_fail: string; passed: boolean | null }>
   endpoint: { running: boolean; url: string | null }
 }
 
@@ -169,6 +171,28 @@ export function ServingModal() {
                     <button style={{ ...primary, marginTop: 8 }} disabled={busy === 'predict'} onClick={() => test(current.slug)}>{busy === 'predict' ? 'Predicting…' : 'Send request'}</button>
                   </>
                 )}
+                <div style={label}>Quality gates</div>
+                {current.quality_gates.length === 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No Quality Gate checked this model. Add one between the model and its consumers to block weak models (e.g. f1 &gt;= 0.9).</div>
+                )}
+                {current.quality_gates.map(g => (
+                  <div key={g.id} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 4 }}>
+                    {g.passed === true ? '✓ Passed' : g.passed === false ? '⚠ Failed (warn only)' : '⚠ Did not pass in this run'} · {g.node}{' '}
+                    <span style={{ ...mono, color: 'var(--text-dim)' }}>{g.rules.split('\n').filter(Boolean).join(' · ')}</span>
+                  </div>
+                ))}
+                {current.evaluation.length > 0 && (
+                  <>
+                    <div style={label}>Evaluation</div>
+                    {current.evaluation.map(ev => (
+                      <div key={ev.id} style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>
+                        <span style={{ color: 'var(--text)' }}>{ev.node}</span>:{' '}
+                        <span style={mono}>{Object.entries(ev.report).slice(0, 6).map(([k, v]) => `${k} ${Number.isInteger(v) ? v : v.toFixed(3)}`).join(' · ')}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>The bundle's MODEL_CARD.md records all of this, with sections to complete (intended use, limitations).</div>
                 <div style={label}>Features</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {current.features.map(f => <span key={f.name} style={{ ...mono, fontSize: 11, padding: '2px 8px', borderRadius: 99, border: '1px solid var(--border2)', color: 'var(--text-dim)' }}>{f.name}: {f.kind}</span>)}

@@ -61,7 +61,7 @@ def test_bundle_contents(data_dir: Path):
     b = _bundle(spec, run_id, "rf", "Churn model")
     path = Path(b["path"])
     assert b["slug"] == "churn-model" and b["task"] == "classification" and b["model"] == "RandomForestClassifier"
-    assert sorted(p.name for p in path.iterdir()) == sorted(["model.joblib", "preprocessing.joblib", "preprocess.py", "schema.json", "example.json",
+    assert sorted(p.name for p in path.iterdir()) == sorted(["model.joblib", "preprocessing.joblib", "preprocess.py", "schema.json", "example.json", "MODEL_CARD.md",
                                                               "requirements.txt", "service.py", "service_bentoml.py", "bentofile.yaml", "Dockerfile", "README.md"])
     X = pd.read_csv(BACKEND / "data.csv").drop(columns=["target"])
     assert [f["name"] for f in b["features"]] == list(X.columns) and all(f["kind"] == "number" for f in b["features"])

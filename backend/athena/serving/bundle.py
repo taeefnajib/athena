@@ -142,11 +142,14 @@ def build_bundle(name: str, model: Any, X: pd.DataFrame, info: dict[str, Any], s
               "source": {k: info.get(k) for k in ("pipeline", "node_id", "node_label", "run_id")},
               "model_features": steps[-1]["columns"], "preprocessing_not_included": info.get("preprocessing", []),
               "preprocessing_replayed": info.get("replayed", []), "training_only": info.get("training_only", []),
-              "preprocessing_verified": info.get("verified", False), "preprocessing_note": info.get("note", ""), "needs_athena": needs_athena}
+              "preprocessing_verified": info.get("verified", False), "preprocessing_note": info.get("note", ""), "needs_athena": needs_athena,
+              "evaluation": info.get("evaluation", []), "quality_gates": info.get("quality_gates", [])}
     joblib.dump(model, tmp / "model.joblib")
     joblib.dump(steps, tmp / "preprocessing.joblib")
     (tmp / "preprocess.py").write_text(inspect.getsource(replay_core), encoding="utf-8")
     (tmp / "schema.json").write_text(json.dumps(schema, indent=2, default=str), encoding="utf-8")
+    from athena.serving.card import model_card
+    (tmp / "MODEL_CARD.md").write_text(model_card(schema, info.get("rows", len(X))), encoding="utf-8")
     (tmp / "example.json").write_text(json.dumps({"rows": [{f["name"]: f["example"] for f in features}]}, indent=2), encoding="utf-8")
     (tmp / "requirements.txt").write_text("\n".join(reqs) + "\n", encoding="utf-8")
     (tmp / "service.py").write_text(templates.SERVICE.format(name=name), encoding="utf-8")
@@ -175,7 +178,8 @@ def describe(path: Path) -> dict[str, Any]:
             "version": schema["version"], "features": schema["features"], "classes": schema.get("classes", []),
             "source": schema.get("source", {}), "needs_athena": schema.get("needs_athena", False),
             "preprocessing_verified": schema.get("preprocessing_verified", False),
-            "preprocessing_note": schema.get("preprocessing_note", ""), **{k: schema.get(k, []) for k in lists}}
+            "preprocessing_note": schema.get("preprocessing_note", ""), **{k: schema.get(k, []) for k in lists},
+            "evaluation": schema.get("evaluation", []), "quality_gates": schema.get("quality_gates", [])}
 
 
 def list_bundles() -> list[dict[str, Any]]:
@@ -220,10 +224,11 @@ def bundle_from_run(name: str, spec: PipelineSpec, run_id: str, node_id: str, po
         X = X.to_frame()
     if not isinstance(X, pd.DataFrame):
         raise BundleError("The model's training data isn't a table")
+    from athena.serving.card import gather_evidence
     from athena.serving.chain import build_chain
     chain = build_chain(flat, run_id, src, X)
     meta = NODE_META.get(flat.node(node_id).type)
     info = {"pipeline": spec.name, "node_id": node_id, "node_label": meta.label if meta else node_id, "run_id": run_id,
             "preprocessing": chain.not_replayed, "replayed": chain.replayed, "training_only": chain.training_only,
-            "verified": chain.verified, "note": chain.note}
+            "verified": chain.verified, "note": chain.note, "rows": len(X), **gather_evidence(flat, run_id, node_id)}
     return build_bundle(name, model, chain.raw, info, chain.steps)

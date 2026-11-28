@@ -15,7 +15,9 @@ def worker_main(job_q: Any, events: Any, cancel_evt: Any) -> None:
     """``events`` is the send end of a Pipe: send() writes straight to the OS pipe, so an event is
     delivered even if user code kills the process right after (a Queue's feeder thread would lose it)."""
     from athena.plugins import load_plugins
+    from athena.utils.tracing import utf8_output
 
+    utf8_output()  # node logs may contain any character; a legacy Windows code page would crash on them
     load_plugins()  # built-in + plugin nodes; the slow part, done while on standby
     from athena.config import settings
     from athena.runtime.engine import run_spec
