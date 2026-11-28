@@ -14,8 +14,10 @@ export type ConfigField = FieldBase & (
   | { type: 'hp_params'; default: Array<{ key: string; values: string }> }
   | { type: 'col_map'; default: Array<{ key: string; values: string }> }
   | { type: 'password'; default: string }
-  /** A saved connection's name; `connector` limits the choices to one connector type. */
+  /** A saved connection's name; `connector` limits the choices to one connector type, or a comma-separated list of types. */
   | { type: 'connection'; default: string; connector?: string; empty_label?: string }
+  /** A resource (endpoint, table, ...) of the connection held in the `connection_field` field. */
+  | { type: 'resource'; default: string; connection_field?: string }
 )
 
 /** Port types are open strings: plugins can introduce new ones. Built-ins include dataset, X_train, model, … */

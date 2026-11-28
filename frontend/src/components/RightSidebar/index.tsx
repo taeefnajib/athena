@@ -10,6 +10,7 @@ import { ExecutionPolicy } from './ExecutionPolicy'
 import { OutputActions } from './OutputActions'
 import { formatMetric } from '../../lib/formatMetric'
 import { RunFromHere } from './RunFromHere'
+import { ResourceField } from './ResourceField'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
 type HpParam = { key: string; values: string }
@@ -161,6 +162,10 @@ function SettingsTab({ spec, config, nodeId, onChange }: { spec: NodeSpec; confi
               />
             )}
             {field.type === 'password' && <input style={inputBase} type="password" autoComplete="new-password" value={String(val)} onChange={e => update(e.target.value)} />}
+            {field.type === 'resource' && (
+              <ResourceField value={String(val)} onChange={update}
+                             connection={String((field.connection_field && config[field.connection_field]) ?? '')} />
+            )}
             {field.type === 'connection' && <ConnectionField value={String(val)} connector={field.connector} emptyLabel={field.empty_label} onChange={update} />}
             {field.help && <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5 }}>{field.help}</div>}
           </div>
@@ -174,7 +179,8 @@ function ConnectionField({ value, connector, emptyLabel, onChange }: { value: st
   const { connections, loaded, load } = useConnectionStore()
   const setShowConnectionsModal = useUiStore(s => s.setShowConnectionsModal)
   useEffect(() => { if (!loaded) load().catch(() => { /* the modal reports load errors */ }) }, [loaded, load])
-  const choices = connections.filter(c => !connector || c.type === connector)
+  const allowed = connector ? connector.split(',').map(t => t.trim()) : null  // one type, or a comma-separated list
+  const choices = connections.filter(c => !allowed || allowed.includes(c.type))
   const missing = value !== '' && loaded && !choices.some(c => c.name === value)
   const style: React.CSSProperties = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '6px 10px', outline: 'none', fontFamily: 'var(--font)', flex: 1, minWidth: 0, cursor: 'pointer' }
   return (

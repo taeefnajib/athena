@@ -121,3 +121,45 @@ def dataset_snapshot(v: dict) -> str:
 
 
 EXPORT["dataset_snapshot"] = dataset_snapshot
+
+
+def saas_fetch(v: dict) -> str:
+    """The preset's dlt REST config, as in Athena. Secrets come from ATHENA_<CONNECTION>_<FIELD> variables."""
+    import re
+
+    from pydantic import SecretStr
+
+    from athena.connectors.saas import PAGINATOR_MARKER, rest_source_config
+    from athena.connectors.saas_presets import PRESETS
+    out, var = v["out_dataset"], v["var"]
+    prefix = "ATHENA_" + "".join(c if c.isalnum() else "_" for c in (v["connection"] or "saas")).upper()
+    try:
+        from athena.connectors.store import get_connection
+        saved = get_connection(v["connection"])
+        preset = PRESETS[saved["type"].removeprefix("saas_")]
+    except Exception:
+        return lines("import pandas as pd", f"# SaaS connection {v['connection']!r} isn't saved on this machine.", f"{out} = pd.DataFrame()")
+    from athena.connectors.saas import config_model
+    secret_fields = [c.name for c in preset.credentials if c.secret]
+    values = {k: val for k, val in saved["config"].items() if k not in secret_fields}
+    values.update({f: SecretStr(f"__ENV_{f.upper()}__") for f in secret_fields})
+    config = rest_source_config(preset, config_model(preset)(**values), v["resource"], v["params"], live_paginator=False)
+    source = repr(config)
+    for f in secret_fields:
+        source = source.replace(f"'__ENV_{f.upper()}__'", f"os.environ[{prefix + '_' + f.upper()!r}]")
+    source = re.sub(rf"'{PAGINATOR_MARKER}(\{{.*?\}})'", lambda m: f"_AthenaHasMorePaginator(**{m.group(1)})", source)
+    envs = " and ".join(f"{prefix}_{f.upper()}" for f in secret_fields)
+    return lines(
+        "import os", "import dlt", "import duckdb", "from dlt.sources.rest_api import rest_api_source",
+        f"# {preset.label}: set {envs} before running (connection {v['connection']!r}).",
+        f"_src_{var} = rest_api_source({source})",
+        f"_src_{var}.max_table_nesting = 0  # keep nested values as JSON" if v["nested"] == "json" else "",
+        f"_src_{var}.resources['data'].add_limit({int(v['max_pages'])})" if v["max_pages"] else "",
+        f"_pipe_{var} = dlt.pipeline(pipeline_name='athena_{var}', destination=dlt.destinations.duckdb('athena_{var}.duckdb'), dataset_name='fetched')",
+        f"_pipe_{var}.run(_src_{var})",
+        f"with duckdb.connect('athena_{var}.duckdb', read_only=True) as _con:",
+        f"    {out} = _con.execute('SELECT * FROM fetched.data').df().drop(columns=['_dlt_load_id', '_dlt_id'], errors='ignore')",
+    )
+
+
+EXPORT["saas_fetch"] = saas_fetch

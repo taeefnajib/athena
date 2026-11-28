@@ -13,7 +13,7 @@ from typing import Any, Callable, Literal, TypeVar
 
 from pydantic import BaseModel, SecretStr
 
-Widget = Literal["text", "number", "select", "toggle", "textarea", "file", "hp_params", "col_map", "password", "connection"]
+Widget = Literal["text", "number", "select", "toggle", "textarea", "file", "hp_params", "col_map", "password", "connection", "resource"]
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,8 @@ class FieldUI:
     """For widget="connection": which connector type's saved connections to offer."""
     help: str | None = None
     empty_label: str | None = None
+    connection_field: str | None = None
+    """For widget="resource": the field holding the connection whose resources (endpoints, tables...) to offer."""
     """For widget="connection": what the empty choice means, e.g. "Local MLflow store"."""
 
 
@@ -59,10 +61,11 @@ def ui(
     connector: str | None = None,
     help: str | None = None,
     empty_label: str | None = None,
+    connection_field: str | None = None,
 ) -> FieldUI:
     """Shorthand for :class:`FieldUI`: ``ui("Estimators")``, ``ui("Code", widget="textarea", mono=True)``,
     ``ui("Connection", widget="connection", connector="sql")``."""
-    return FieldUI(label, widget, tuple(options) if options is not None else None, accept, mono, min, max, step, connector, help, empty_label)
+    return FieldUI(label, widget, tuple(options) if options is not None else None, accept, mono, min, max, step, connector, help, empty_label, connection_field)
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,8 @@ def form_fields(config: type[BaseModel] | None, hints: dict[str, FieldUI]) -> li
             entry["connector"] = hint.connector
         if hint.empty_label:
             entry["empty_label"] = hint.empty_label
+        if hint.connection_field:
+            entry["connection_field"] = hint.connection_field
         if hint.help or f.description:
             entry["help"] = hint.help or f.description
         for k in ("min", "max", "step"):
