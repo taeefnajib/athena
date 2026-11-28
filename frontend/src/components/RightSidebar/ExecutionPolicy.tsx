@@ -35,6 +35,7 @@ export function ExecutionPolicy({ nodeId }: { nodeId: string }) {
   const backoff = policy.retry?.backoff_s ?? 0
   const res = policy.resources ?? {}
   const onRay = (policy.runtime ?? '').startsWith('ray')
+  const onK8s = (policy.runtime ?? '').startsWith('k8s')
   const chosen = runtimes.find(r => r.value === (policy.runtime || 'python'))
   const setRes = (key: 'cpu' | 'memory_gb' | 'gpu', raw: string) => set({ resources: cleanResources({ ...res, [key]: raw === '' ? null : Number(raw) }) })
 
@@ -56,6 +57,7 @@ export function ExecutionPolicy({ nodeId }: { nodeId: string }) {
               {policy.runtime && !runtimes.some(r => r.value === policy.runtime) && <option value={policy.runtime}>{policy.runtime} (missing)</option>}
             </select>
             {chosen?.hint && <div style={{ ...hint, color: 'var(--warning)' }}>{chosen.hint}</div>}
+            {onK8s && <div style={hint}>Runs as a Kubernetes Job in the connection's image; inputs and outputs go through its artifact store. Stop deletes the Job, and the node's timeout is the Job's deadline. Logs arrive when the node finishes.</div>}
             {onRay && <div style={hint}>Runs as a Ray task (a local cluster starts with the run, which takes a few seconds; add a Ray cluster under Connections for a remote one). Logs arrive when the node finishes; n_jobs work spreads over the cluster.</div>}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -67,7 +69,7 @@ export function ExecutionPolicy({ nodeId }: { nodeId: string }) {
               </div>
             ))}
           </div>
-          <div style={hint}>{onRay ? 'Reserved on the Ray cluster for this node.' : 'Advisory on the local worker; enforced when the node runs on Ray.'}</div>
+          <div style={hint}>{onRay ? 'Reserved on the Ray cluster for this node.' : onK8s ? "The pod's requests and limits (GPUs as nvidia.com/gpu)." : 'Advisory on the local worker; enforced when the node runs on Ray or Kubernetes.'}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={label}>Timeout (seconds)</label>
             <input style={input} type="number" min={1} placeholder="default (ATHENA_NODE_TIMEOUT_S)"

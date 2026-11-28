@@ -160,7 +160,7 @@ Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**, **Code** 
 
 Its **Build** section (`modals/BuildSection.tsx`) builds the bundle into a Docker image or a Bento through `/api/serving/bundles/{slug}/build`, disabled with an install hint when `/api/serving/tools` says the command is missing; the modal polls every 2 s while a build runs and shows the log and the run command.
 
-**Execution** (`RightSidebar/ExecutionPolicy.tsx`): *Runs on* (from `GET /api/runtimes`: local worker, local Ray, saved Ray connections; unavailable ones disabled with the install hint), CPU / memory / GPU requests (`cleanResources` drops empty ones), timeout, retries, cache.
+**Execution** (`RightSidebar/ExecutionPolicy.tsx`): *Runs on* (from `GET /api/runtimes`: local worker, local Ray, saved Ray and Kubernetes connections; unavailable ones disabled with the install hint), CPU / memory / GPU requests (`cleanResources` drops empty ones), timeout, retries, cache.
 
 **Reports and monitoring**: a node whose `node_finish` lists `documents` (the Evidently nodes) gets *Open report* (new tab) and a download in `RightSidebar/OutputActions.tsx`, via `lib/profile.ts: documentUrl`. The Serving modal's Monitoring section shows how many request rows the endpoint has logged, links its Prometheus metrics (through the backend), and explains how to compare live traffic with the training data (Endpoint Requests → Data Drift Report).
 

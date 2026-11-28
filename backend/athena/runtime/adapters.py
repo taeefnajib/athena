@@ -4,6 +4,7 @@
 - ``"ray"``: a Ray task on a local Ray cluster that the worker starts for the run (CPU/GPU/memory from the node's
   ``resources`` are enforced as Ray resources).
 - ``"ray:<connection>"``: a Ray task on the cluster of a saved ``ray`` connection.
+- ``"k8s:<connection>"``: a Kubernetes Job on the cluster of a saved ``kubernetes`` connection.
 
 The engine calls ``run_node`` for every node it executes; caching, retries, timeouts and events stay in the engine,
 so a node behaves the same wherever it runs. Runtimes never change exported code: the script runs locally.
@@ -17,8 +18,11 @@ from athena.core.handler import ExecutionContext, HandlerResult
 from athena.schemas.pipeline import NodeSpec
 
 LOCAL = "python"
-KINDS = (LOCAL, "ray")
+KINDS = (LOCAL, "ray", "k8s")
 RAY_HINT = "Ray isn't installed: uv pip install 'athena-backend[ray]' (or pip install 'ray[client]')"
+K8S_HINT = "The Kubernetes client isn't installed: uv pip install 'athena-backend[k8s]'"
+CONNECTOR = {"ray": "ray", "k8s": "kubernetes"}  # runtime kind -> connection type
+LABEL = {"ray": "Ray cluster", "k8s": "Kubernetes cluster"}
 
 
 class RuntimeUnavailable(ValueError):
@@ -32,9 +36,11 @@ def parse(runtime: str | None) -> tuple[str, str]:
     kind, _, connection = runtime.partition(":")
     kind = kind.strip().lower()
     if kind not in KINDS:
-        raise RuntimeUnavailable(f"Unknown runtime {runtime!r}: use python, ray, or ray:<connection>")
+        raise RuntimeUnavailable(f"Unknown runtime {runtime!r}: use python, ray, ray:<connection> or k8s:<connection>")
     if kind == LOCAL and connection:
         raise RuntimeUnavailable("The python runtime takes no connection")
+    if kind == "k8s" and not connection.strip():
+        raise RuntimeUnavailable("The k8s runtime needs a Kubernetes connection: k8s:<connection>")
     return kind, connection.strip()
 
 
@@ -42,20 +48,26 @@ def ray_installed() -> bool:
     return importlib.util.find_spec("ray") is not None
 
 
+def k8s_installed() -> bool:
+    return importlib.util.find_spec("kubernetes") is not None
+
+
 def check(runtime: str | None) -> tuple[str, str]:
     """Validate a runtime before the node runs; raises RuntimeUnavailable with what to do."""
     kind, connection = parse(runtime)
-    if kind == "ray":
-        if not ray_installed():
+    if kind != LOCAL:
+        if kind == "ray" and not ray_installed():
             raise RuntimeUnavailable(RAY_HINT)
+        if kind == "k8s" and not k8s_installed():
+            raise RuntimeUnavailable(K8S_HINT)
         if connection:
             from athena.connectors.store import get_connection
             try:
                 rec = get_connection(connection)
             except Exception as exc:  # a missing connection is a user error
-                raise RuntimeUnavailable(f"No saved connection named {connection!r}. Create a Ray cluster connection under Connections.") from exc
-            if rec.get("type") != "ray":
-                raise RuntimeUnavailable(f"Connection {connection!r} is a {rec.get('type')} connection, not a Ray cluster")
+                raise RuntimeUnavailable(f"No saved connection named {connection!r}. Create it under Connections.") from exc
+            if rec.get("type") != CONNECTOR[kind]:
+                raise RuntimeUnavailable(f"Connection {connection!r} is a {rec.get('label') or rec.get('type')} connection, not a {LABEL[kind]} connection")
     return kind, connection
 
 
@@ -63,18 +75,25 @@ def run_node(node: NodeSpec, handler: Any, ctx: ExecutionContext) -> HandlerResu
     kind, connection = check(node.runtime)
     if kind == LOCAL:
         return handler(ctx)  # type: ignore[no-any-return]
+    if kind == "k8s":
+        from athena.runtime import k8s_runtime
+        return k8s_runtime.run(node, ctx, connection)
     from athena.runtime import ray_runtime
     return ray_runtime.run(node, ctx, connection)
 
 
 def available() -> list[dict[str, Any]]:
-    """The runtimes the inspector offers: local, local Ray, and each saved Ray connection."""
+    """The runtimes the inspector offers: local, local Ray, and each saved Ray / Kubernetes connection."""
     out: list[dict[str, Any]] = [{"value": LOCAL, "label": "Local worker", "available": True, "hint": None}]
     installed = ray_installed()
     out.append({"value": "ray", "label": "Ray (local cluster)", "available": installed, "hint": None if installed else RAY_HINT})
     from athena.connectors.store import list_connections
+    k8s = k8s_installed()
     for rec in list_connections():
         if rec.get("type") == "ray":
             out.append({"value": f"ray:{rec['name']}", "label": f"Ray: {rec['name']}", "available": installed,
                         "hint": None if installed else RAY_HINT})
+        elif rec.get("type") == "kubernetes":
+            out.append({"value": f"k8s:{rec['name']}", "label": f"Kubernetes: {rec['name']}", "available": k8s,
+                        "hint": None if k8s else K8S_HINT})
     return out
