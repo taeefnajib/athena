@@ -128,6 +128,63 @@ def _pca(step, df):
     return out
 
 
+def _clip(step, df):
+    """Outlier Detector (clip): the training data's bounds, per column."""
+    out = df.copy()
+    for col, (lo, hi) in step["bounds"].items():
+        if col in out.columns:
+            out[col] = out[col].clip(lo, hi)
+    return out
+
+
+def _outlier_flag(step, df):
+    """Outlier Detector (flag): ``is_outlier`` by the method and the statistics learned in training."""
+    import pandas as pd
+    cols = list(step["cols"])
+    num = _padded(df, cols)
+    method = step["method"]
+    if method == "IQR":
+        mask = pd.Series(True, index=df.index)
+        for col, (lo, hi) in step["bounds"].items():
+            mask &= num[col].between(lo, hi)
+    elif method == "Z-Score":
+        filled = num.fillna(0)
+        z = ((filled - pd.Series(step["mean"])) / pd.Series(step["std"])).abs()
+        mask = (z < step["threshold"]).all(axis=1)
+    else:  # Isolation Forest
+        mask = pd.Series(step["model"].predict(num.fillna(0)) == 1, index=df.index)
+    out = df.copy()
+    out["is_outlier"] = (~mask).astype(int)
+    return out
+
+
+def _str_split(step, df):
+    """String Splitter: the same separator, and exactly the columns training produced."""
+    col = step["col"]
+    if col not in df.columns:
+        raise ValueError(f"Missing text column {col!r}")
+    out = df.copy()
+    if not step["expand"]:
+        out[f"{col}_split"] = out[col].str.split(step["sep"])
+        return out
+    import pandas as pd
+    parts = out[col].str.split(step["sep"], expand=True)
+    parts = parts.reindex(columns=range(step["n"]))  # fewer parts than training: empty; more: dropped
+    parts.columns = [f"{step['prefix']}_{i}" for i in range(step["n"])]
+    return pd.concat([out, parts], axis=1)
+
+
+def _lookup(step, df):
+    """Data Merge: join each request row with the table the pipeline merged in (a left join, one row per request)."""
+    on = list(step["on"])
+    missing = [c for c in on if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing join key(s) {missing}")
+    merged = df.merge(step["table"], on=on, how="left")
+    merged.index = df.index  # the table has one row per key, so rows line up with the request
+    return merged
+
+
 def _features(step, df):
     """The split: the model's input columns, in training order."""
     missing = [c for c in step["columns"] if c not in df.columns]
@@ -138,6 +195,7 @@ def _features(step, df):
 
 _KINDS = {"columns_transform": _columns_transform, "one_hot": _one_hot, "label_encode": _label_encode, "astype": _astype,
           "select": _select, "poly": _poly, "dates": _dates, "text": _text, "pca": _pca, "features": _features,
+          "clip": _clip, "outlier_flag": _outlier_flag, "str_split": _str_split, "lookup": _lookup,
           "rename": lambda step, df: df.rename(columns=step["mapping"]), "skip": lambda step, df: df}
 
 

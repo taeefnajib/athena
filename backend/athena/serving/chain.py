@@ -2,7 +2,7 @@
 
 Walk upstream from the model's training input to the data source: splits mark the target to drop, nodes with a
 replay step add it, training-only nodes (row filters, balancing) are skipped, and the first node that can't be
-replayed (or that joins several inputs) cuts the chain: requests then start from that node's output. The chain is
+replayed (or that joins several inputs, except a merge replayed as a lookup on its left input) cuts the chain: requests then start from that node's output. The chain is
 checked before it's used: replayed on the raw training rows it must reproduce the split's X_train exactly.
 """
 from __future__ import annotations
@@ -84,10 +84,13 @@ def build_chain(spec: PipelineSpec, run_id: str, train_src: str, model_X: pd.Dat
             target = target or _target_of(spec, run_id, cur)
         else:
             replay = getattr(load_result(run_id, cur), "replay", None)
+            if replay is not None and "follow_port" in replay:  # a merge: requests come in on one side
+                incoming = [e for e in incoming if e.target_port == replay["follow_port"]]
             if replay is None or len(incoming) != 1:
                 cut = cur
                 break
-            (training_only if replay.get("kind") == "skip" else replayed).append(meta.label)
+            label = f"{meta.label} ({replay['note']})" if replay.get("note") else meta.label
+            (training_only if replay.get("kind") == "skip" else replayed).append(label)
             if replay.get("kind") != "skip":
                 steps.append(replay)
         if len(incoming) != 1:

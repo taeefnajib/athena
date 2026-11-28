@@ -224,3 +224,82 @@ def test_a_replay_that_does_not_reproduce_training_is_dropped(data_dir: Path, mo
     assert not b["preprocessing_verified"] and b["preprocessing_replayed"] == []
     assert "Scaler" in b["preprocessing_not_included"] and "didn't reproduce" in b["preprocessing_note"]
     assert "plan_pro" in [f["name"] for f in b["features"]]  # back to model-ready features
+
+
+def _coded_csv(tmp: Path) -> Path:
+    """A code column to split ("A-17"), a few extreme incomes, an id to join on."""
+    import numpy as np
+    rng = np.random.default_rng(1)
+    n = 240
+    df = pd.DataFrame({"id": np.arange(n), "age": rng.normal(40, 10, n).round(), "income": rng.normal(50, 15, n),
+                       "spend": rng.normal(20, 5, n), "plan": rng.choice(["basic", "plus", "pro"], n),
+                       "code": [f"{rng.choice(list('ABC'))}-{rng.integers(1, 99)}" for _ in range(n)]})
+    df.loc[::29, "income"] = 400.0  # outliers
+    df.loc[::17, "spend"] = np.nan
+    df["target"] = ((df["income"] > 52) | (df["plan"] == "pro")).astype(int)
+    path = tmp / "coded.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
+def _replay_matches_test_set(b: dict, run_id: str, raw: pd.DataFrame) -> None:
+    import joblib
+
+    from athena.core.artifacts import load_output
+    from athena.serving import replay_core
+    steps = joblib.load(Path(b["path"]) / "preprocessing.joblib")
+    X_test = load_output(run_id, "tt", 2)
+    pd.testing.assert_frame_equal(replay_core.apply(steps, raw.loc[X_test.index]), X_test, check_dtype=False)
+
+
+@pytest.mark.parametrize("method", ["IQR", "Z-Score", "Isolation Forest"])
+def test_outliers_string_split_and_feature_selection_are_replayed(data_dir: Path, method: str):
+    csv = _coded_csv(data_dir)
+    spec = PipelineSpec.model_validate({"name": "more", "nodes": [
+        _n("csv", "csv_loader", path=str(csv)), _n("split", "str_split", col="code", sep="hyphen", prefix="code"),
+        _n("imp", "imputer", strategy="median"), _n("flag", "outlier", method=method, action="flag", cols="income,spend"),
+        _n("clip", "outlier", action="clip", cols="income"), _n("ohe", "ohe", cols="plan,code_0"),
+        _n("sel", "col_selector", mode="exclude", cols="code,code_1,id"), _n("fs", "feat_imp_sel", k=5),
+        _n("tt", "train_test"), _n("rf", "rf", n_estimators=20),
+    ], "edges": [_e("a", "csv", "split"), _e("b", "split", "imp"), _e("c", "imp", "flag"), _e("d", "flag", "clip"),
+                 _e("e", "clip", "ohe"), _e("f", "ohe", "sel"), _e("g", "sel", "fs"), _e("h", "fs", "tt"),
+                 _e("i", "tt", "rf", 0, 0), _e("j", "tt", "rf", 1, 1)]})
+    run_id = _run(spec, data_dir)
+    b = _bundle(spec, run_id, "rf", f"more-{method}")
+    assert b["preprocessing_verified"] and b["preprocessing_not_included"] == [], b["preprocessing_note"]
+    assert b["preprocessing_replayed"] == ["String Splitter", "Missing Value Imputer", "Outlier Detector", "Outlier Detector",
+                                           "One-Hot Encoder", "Column Selector", "Feature Importance Sel"]
+    _replay_matches_test_set(b, run_id, pd.read_csv(csv).drop(columns=["target"]))
+
+
+def test_a_merge_is_replayed_as_a_lookup(data_dir: Path):
+    import numpy as np
+    csv = _coded_csv(data_dir)
+    regions = data_dir / "regions.csv"
+    pd.DataFrame({"id": np.arange(240), "region": np.random.default_rng(2).choice(["north", "south"], 240),
+                  "tenure": np.arange(240) % 13}).to_csv(regions, index=False)
+
+    def spec(how: str) -> PipelineSpec:
+        return PipelineSpec.model_validate({"name": "joined", "nodes": [
+            _n("csv", "csv_loader", path=str(csv)), _n("reg", "csv_loader", path=str(regions)), _n("join", "data_merge", on="id", how=how),
+            _n("imp", "imputer", strategy="median"), _n("ohe", "ohe", cols="plan,region"),
+            _n("sel", "col_selector", mode="exclude", cols="code,id"), _n("tt", "train_test"), _n("rf", "rf", n_estimators=20),
+        ], "edges": [_e("a", "csv", "join", 0, 0), _e("b", "reg", "join", 0, 1), _e("c", "join", "imp"), _e("d", "imp", "ohe"),
+                     _e("e", "ohe", "sel"), _e("f", "sel", "tt"), _e("g", "tt", "rf", 0, 0), _e("h", "tt", "rf", 1, 1)]})
+
+    s = spec("inner")
+    run_id = _run(s, data_dir)
+    b = _bundle(s, run_id, "rf", "joined")
+    assert b["preprocessing_verified"], b["preprocessing_note"]
+    assert b["preprocessing_replayed"][0] == "Data Merge / Join (joins each request with the 240-row right table saved with the model)"
+    assert "region" not in [f["name"] for f in b["features"]] and "id" in [f["name"] for f in b["features"]]  # requests send the left side
+    _replay_matches_test_set(b, run_id, pd.read_csv(csv).drop(columns=["target"]))
+
+    assert client.post(f"/api/serving/endpoints/{b['slug']}").json()["running"]
+    row = {"id": 7, "age": 30, "income": 60.0, "spend": 18.0, "plan": "basic", "code": "A-3"}
+    ok = client.post(f"/api/serving/endpoints/{b['slug']}/predict", json={"rows": [row, {**row, "id": 9999}]}).json()
+    assert ok["status"] == 200 and len(ok["response"]["predictions"]) == 2  # an unknown id still gets a prediction
+
+    s = spec("outer")  # an outer join adds rows: not a lookup, so the chain stops there
+    b = _bundle(s, _run(s, data_dir), "rf", "outer")
+    assert "Data Merge / Join" not in " ".join(b["preprocessing_replayed"]) and b["preprocessing_replayed"] == ["Missing Value Imputer", "One-Hot Encoder", "Column Selector"]

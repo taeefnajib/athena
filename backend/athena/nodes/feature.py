@@ -160,8 +160,10 @@ class StrSplitHandler:
         else:
             df[f"{cfg.col}_split"] = split_result
 
-        ctx.logger.info("String split", col=cfg.col, sep=cfg.sep, new_cols=len(split_result.columns) if cfg.expand else 1)
-        return HandlerResult(outputs=[df], preview=preview_dataframe(df))
+        n_parts = len(split_result.columns) if cfg.expand else 1
+        ctx.logger.info("String split", col=cfg.col, sep=cfg.sep, new_cols=n_parts)
+        return HandlerResult(outputs=[df], preview=preview_dataframe(df),
+                             replay={"kind": "str_split", "col": cfg.col, "sep": sep, "expand": cfg.expand, "prefix": cfg.prefix, "n": n_parts})
 
 
 @node(
@@ -345,8 +347,10 @@ class FeatImpSelHandler:
         non_num = [c for c in X.columns if c not in num_X.columns]
         result = df[non_num + selected + [target_col]]
         ctx.logger.info("Feature selection", method=cfg.method, k=k, selected=len(selected))
+        dropped = [c for c in num_X.columns if c not in selected]
         return HandlerResult(outputs=[result], preview=preview_dataframe(result),
-                             metrics={"features_in": float(len(num_X.columns)), "features_out": float(len(selected))})
+                             metrics={"features_in": float(len(num_X.columns)), "features_out": float(len(selected))},
+                             replay={"kind": "select", "mode": "exclude", "cols": dropped})
 
 
 @node(

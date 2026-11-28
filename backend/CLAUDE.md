@@ -163,7 +163,7 @@ class ImputerHandler:
         )
 ```
 
-**Replay steps (serving).** A preprocessing handler also returns `replay=`: a plain dict (`{"kind": ..., ...}`) holding what it learned (fitted scikit-learn objects, column lists) that `serving/replay_core.py` can redo on new rows, so deployed models take raw data. Row filters and balancing return `{"kind": "skip"}` (training only). A node that changes values but returns no replay step cuts the chain: requests then start after it. Keep replay steps free of Athena classes (bundles must run without Athena) and add the kind to `replay_core.py` if you need a new one.
+**Replay steps (serving).** A preprocessing handler also returns `replay=`: a plain dict (`{"kind": ..., ...}`) holding what it learned (fitted scikit-learn objects, column lists) that `serving/replay_core.py` can redo on new rows, so deployed models take raw data. Row filters and balancing return `{"kind": "skip"}` (training only). A node that changes values but returns no replay step cuts the chain: requests then start after it. Keep replay steps free of Athena classes (bundles must run without Athena) and add the kind to `replay_core.py` if you need a new one. A node with several data inputs can still be replayed by naming the input requests arrive on (`"follow_port"`): Data Merge does, as a `lookup` that left-joins requests with the right table it saw in training (only for inner/left joins with unique keys on the right). An optional `"note"` is appended to the step's label in the Serving window.
 
 **Rules for handlers:**
 - Validate config via the Pydantic schema; raise `ValueError` with a clean message on bad input. The executor catches and converts to a `node_finish: error` event.
