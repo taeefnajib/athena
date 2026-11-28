@@ -72,6 +72,7 @@ backend/athena/
 │   ├── eval.py               # metrics/conf_matrix/roc/feat_imp_viz/residual
 │   ├── interp.py             # shap/lime/debugger
 │   ├── deploy.py             # predict/api_gen/csv_export/model_saver/report_gen
+│   ├── batch.py              # Batch Predict: score a table with a packaged model (Serving bundle)
 │   ├── monitor.py            # drift/perf (built-in KS/PSI)
 │   ├── drift.py              # Evidently: data drift, prediction drift, data quality
 │   └── traffic.py            # Endpoint Requests (a local endpoint's request log)
@@ -85,7 +86,11 @@ backend/athena/
 ├── storage/
 │   ├── __init__.py
 │   ├── files.py              # save/load .athena files
+│   ├── schedules.py          # schedules.json: cron schedules of saved pipelines + run history
 │   └── autosave.py           # autosave dir at ~/.athena/autosave/
+│
+├── scheduling/
+│   └── scheduler.py          # the asyncio loop that starts due schedules
 │
 └── utils/
     ├── plotting.py           # matplotlib -> base64 PNG helper
@@ -159,7 +164,7 @@ class ImputerHandler:
         )
 ```
 
-**Replay steps (serving).** A preprocessing handler also returns `replay=`: a plain dict (`{"kind": ..., ...}`) holding what it learned (fitted scikit-learn objects, column lists) that `serving/replay_core.py` can redo on new rows, so deployed models take raw data. Row filters and balancing return `{"kind": "skip"}` (training only). A node that changes values but returns no replay step cuts the chain: requests then start after it. Keep replay steps free of Athena classes (bundles must run without Athena) and add the kind to `replay_core.py` if you need a new one.
+**Replay steps (serving).** A preprocessing handler also returns `replay=`: a plain dict (`{"kind": ..., ...}`) holding what it learned (fitted scikit-learn objects, column lists) that `serving/replay_core.py` can redo on new rows, so deployed models take raw data. Row filters and balancing return `{"kind": "skip"}` (training only). A node that changes values but returns no replay step cuts the chain: requests then start after it. Keep replay steps free of Athena classes (bundles must run without Athena) and add the kind to `replay_core.py` if you need a new one. A node with several data inputs can still be replayed by naming the input requests arrive on (`"follow_port"`): Data Merge does, as a `lookup` that left-joins requests with the right table it saw in training (only for inner/left joins with unique keys on the right). An optional `"note"` is appended to the step's label in the Serving window.
 
 **Rules for handlers:**
 - Validate config via the Pydantic schema; raise `ValueError` with a clean message on bad input. The executor catches and converts to a `node_finish: error` event.
@@ -330,6 +335,8 @@ Rules:
 - `serving/bundle.py`: `bundle_from_run(name, spec, run_id, node_id, port)` loads the model from the run (`core/artifacts.py`), finds its training features by following model inputs back to an `X_train` input (`training_source`), builds the preprocessing chain (`serving/chain.py`) and writes `<data_dir>/models/<slug>/` (with `preprocessing.joblib` and `preprocess.py`, a verbatim copy of `serving/replay_core.py`).
 - `serving/chain.py`: walks upstream from the training input to the data source collecting `HandlerResult.replay` steps (splits drop the target; `skip` steps are training-only; the first node without a step, or with several data inputs, cuts the chain), ends with the model's feature order, then verifies: replayed on the raw training rows the chain must reproduce the split's `X_train` exactly, otherwise it falls back to model-ready features and says why. Requirements come from the modules the model's pickle actually references (a recording `Unpickler`), mapped to installed distributions and pinned; `needs_athena` flags models pickled with Athena's own classes. Example values are medians / modes, never real rows.
 - `serving/templates.py`: the standalone `service.py` (FastAPI), BentoML service, bentofile, Dockerfile and README. Keep them free of Athena imports.
+- **Batch:** `nodes/batch.py: batch_predict` (`reusable=False`: a bundle can be re-packaged under the same name) scores a table with a bundle through `_athena_bundle_predict`, which loads the bundle's own `preprocess.py` (so a bundle keeps working with the preprocessing it was made with) and is copied verbatim into exports. `service.py --predict-file IN --output OUT` is the same outside Athena; tests check the two agree.
+- `serving/builds.py`: *Build* runs the user's own `docker build -t <slug>:latest .` or `bentoml build -f bentofile.yaml .` in the bundle folder as a background process (one per bundle; output in `build.log`, the last result in `build.json`; stopped at shutdown and when the bundle is deleted). `tools()` only checks the commands exist; a stopped Docker daemon shows up in the log. API: `GET /api/serving/tools`, `POST/GET/DELETE /api/serving/bundles/{slug}/build`. Tests use `TOOL_OVERRIDES` with a stand-in script, never real Docker.
 - `serving/endpoints.py`: each endpoint is `python service.py --exit-with-parent` in its own process on a free 127.0.0.1 port (user models never load in the API process). Its stdin is a pipe Athena holds, so the service exits when Athena does, even after a crash; `stop_all()` runs at shutdown too. API: `api/serving.py` (`/api/serving/bundles`, `/api/serving/endpoints/{slug}`, `.../predict` for the test console).
 
 ### Quality gates, fairness, model cards
@@ -346,6 +353,15 @@ Rules:
 - **Documents:** `HandlerResult.documents` (name -> HTML) is cached with the result; `node_finish.documents` lists the names; `GET /api/runs/{run}/documents/{node}/{name}` serves one with `Content-Security-Policy: sandbox allow-scripts` (Evidently's charts run, in an opaque origin that can't call the API). The MLflow observer logs them as `athena/reports/<node>/<name>`. Results cached before the field existed lack it: read it with `getattr(result, "documents", None)`.
 - **Endpoints:** `service.py` keeps in-process counters and serves `/metrics` (Prometheus text format, no dependency); with `--log-requests FILE` it appends each predicted row (features after type coercion, before preprocessing; `prediction`; `timestamp`) as JSON Lines and rotates to `*.1.jsonl` at 50 MB. Logging never fails a prediction. `serving/endpoints.py` passes `--log-requests <bundle>/logs/requests.jsonl` only to services that support it (bundles made earlier don't); `GET /api/serving/endpoints/{slug}/metrics` proxies the metrics, and bundle listings carry `monitoring: {logs_requests, requests_logged, request_log}`.
 - `nodes/traffic.py`: `endpoint_requests` (`reusable=False`) reads a bundle's log by model name through `_athena_endpoint_requests` (rotated file first; a half-written last line is skipped).
+
+### Scheduling
+
+- `core/cron.py`: a dependency-free cron parser (`parse`, `next_after`, `next_times`, `describe`): five fields, ranges, steps, lists, names, macros; day-of-month and day-of-week OR'ed when both are set, as in cron. Times are naive local wall-clock times on purpose (cron semantics; no DST offset arithmetic).
+- `storage/schedules.py`: `<data_dir>/schedules.json` (atomic writes, a lock). A schedule = name, saved pipeline path, cron, enabled, `next_run`, and the last 50 `RunRecord`s (trigger, status, failing node, gates that skipped).
+- `scheduling/scheduler.py`: an asyncio loop started in the app lifespan when `settings.scheduler` (`ATHENA_SCHEDULER`), ticking every 15 s. `catch_up()` at startup moves past fire times to the future (no catch-up runs). `tick()` advances `next_run` *before* starting, so a late schedule runs once; a busy run slot leaves it due for a later tick. `start_run()` re-reads the file each time, runs it through `core/executor.execute` (the same worker path as the UI) and summarises the broker events into the history. Tests call `tick(now, broker)` directly.
+- API `api/schedules.py`: `GET/PUT /api/schedules`, `DELETE /api/schedules/{name}`, `POST .../{name}/run`, `GET .../{name}/export?target=airflow|dagster`, `GET /api/schedules/preview?cron=`.
+- **Skipping:** `HandlerResult.halt` (a reason) makes the engine skip all descendants of that node without failing the run; `node_finish.halted` says so. Only the Quality Gate uses it (`on_fail="skip"`); its optional `dataset` input/output (port 4 / port 2) lets data be gated, not just models. In exported scripts a skip ends the script (`SystemExit(0)`).
+- `core/orchestrators.py` + `core/orchestrator_steps.py`: Airflow / Dagster zips with one task per node. `pipeline_to_steps` reuses `build_sections` / `_header`: each node's exported code becomes a function that loads its input variables from the run's artifact folder (pickle per variable, `ATHENA_ARTIFACTS`) and saves its outputs; `run_step(node, run_id)` returns False when a gate skipped (`SystemExit(0)`), which the DAG turns into `AirflowSkipException` and the Dagster op into a missing optional output (downstream skipped). The full script `pipeline_to_python` is still in the zip. Tests run the files against stub `airflow` / `dagster` modules that execute tasks in dependency order, and check the steps reproduce the script's outputs.
 
 ### Run outputs and profiling
 
@@ -459,6 +475,7 @@ Autosave: `~/.athena/autosave/latest.athena` written every 10s when the in-memor
 | `ATHENA_KEEP_CACHE` | `false` | Keep cached node results across restarts |
 | `ATHENA_LOG_LEVEL` | `INFO` | structlog level |
 | `ATHENA_ALLOW_CUSTOM_CODE` | `true` | Disables `custom_code` if false |
+| `ATHENA_SCHEDULER` | `true` | Runs schedules while the server runs; false keeps them idle |
 
 No environment variable should ever change the **on-the-wire schema**. Configuration affects behavior, not contracts.
 

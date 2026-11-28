@@ -12,14 +12,17 @@ V = dict[str, Any]
 def quality_gate(v: V) -> str:
     reports = ", ".join(v[k] for k in ("in_report", "in_report_2", "in_report_3"))
     rep, model = v["out_report"], v["out_model"]
-    stop = v["on_fail"] == "stop"
+    stop, skip = v["on_fail"] == "stop", v["on_fail"] == "skip"
     return lines(
         f"_gate = _athena_check_rules([{reports}], {v['rules']!r})",
         "for _rule, _metric, _value, _ok in _gate:\n    print('PASS' if _ok else 'FAIL', _rule, f'(got {_value:.4g})')",
         f"{rep} = {{'passed': float(all(r[3] for r in _gate)), 'rules_passed': float(sum(r[3] for r in _gate)), 'rules_total': float(len(_gate))}}",
         (f"if not {rep}['passed']:\n    raise SystemExit('Quality gate failed: ' + '; '.join(f'{{r[0]}} (got {{r[2]:.4g}})' for r in _gate if not r[3]))"
          if stop else ""),
+        (f"if not {rep}['passed']:  # on_fail=skip: in Athena only the nodes after the gate are skipped; a script stops here\n"
+         f"    raise SystemExit(0)" if skip else ""),
         f"{model} = {v['in_model']}",
+        f"{v['out_dataset']} = {v['in_dataset']}",
     )
 
 

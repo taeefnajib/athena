@@ -3,6 +3,7 @@ import { useUiStore } from '../../store/uiStore'
 import { usePipelineStore } from '../../store/pipelineStore'
 import { useExecutionStore } from '../../store/executionStore'
 import { NODE_REGISTRY } from '../../registry/nodeRegistry'
+import { BuildSection, type BuildStatus, type BuildTools } from './BuildSection'
 
 interface Feature { name: string; kind: string; dtype: string; example: unknown }
 interface Bundle {
@@ -14,6 +15,7 @@ interface Bundle {
   quality_gates: Array<{ node: string; id: string; rules: string; on_fail: string; passed: boolean | null }>
   endpoint: { running: boolean; url: string | null }
   monitoring: { logs_requests: boolean; requests_logged: number; request_log: string }
+  build?: BuildStatus | null
 }
 
 const btn: React.CSSProperties = { fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', cursor: 'pointer' }
@@ -42,6 +44,7 @@ export function ServingModal() {
   const [request, setRequest] = useState('')
   const [response, setResponse] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [tools, setTools] = useState<BuildTools | null>(null)
   const close = () => setShowServingModal(false)
 
   const refresh = useCallback(async (focus?: string) => {
@@ -50,8 +53,15 @@ export function ServingModal() {
     setSelected(s => focus ?? s ?? list[0]?.slug ?? null)
   }, [])
   useEffect(() => { refresh().catch(e => showToast(String(e), 'error')) }, [refresh, showToast])
+  useEffect(() => { call<BuildTools>('/api/serving/tools').then(setTools).catch(() => setTools(null)) }, [])
 
   const current = bundles.find(b => b.slug === selected)
+  const building = bundles.some(b => b.build?.state === 'running')
+  useEffect(() => {  // follow a build's log while it runs
+    if (!building) return
+    const timer = setInterval(() => { refresh().catch(() => {}) }, 2000)
+    return () => clearInterval(timer)
+  }, [building, refresh])
   useEffect(() => {
     if (!current) return
     setRequest(JSON.stringify({ rows: [Object.fromEntries(current.features.map(f => [f.name, f.example]))] }, null, 2))
@@ -73,6 +83,11 @@ export function ServingModal() {
   const start = (slug: string) => act('start', async () => { await call(`/api/serving/endpoints/${slug}`, { method: 'POST' }); await refresh(slug) })
   const stop = (slug: string) => act('stop', async () => { await call(`/api/serving/endpoints/${slug}`, { method: 'DELETE' }); await refresh(slug) })
   const remove = (slug: string) => act('delete', async () => { await call(`/api/serving/bundles/${slug}`, { method: 'DELETE' }); setSelected(null); await refresh() })
+  const startBuild = (slug: string, target: string) => act('build', async () => {
+    await call(`/api/serving/bundles/${slug}/build`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) })
+    await refresh(slug)
+  })
+  const cancelBuild = (slug: string) => act('build', async () => { await call(`/api/serving/bundles/${slug}/build`, { method: 'DELETE' }); await refresh(slug) })
   const test = (slug: string) => act('predict', async () => {
     let body: unknown
     try { body = JSON.parse(request) } catch { throw new Error('The request must be valid JSON') }
@@ -195,7 +210,7 @@ export function ServingModal() {
                 )}
                 {current.quality_gates.map(g => (
                   <div key={g.id} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 4 }}>
-                    {g.passed === true ? '✓ Passed' : g.passed === false ? '⚠ Failed (warn only)' : '⚠ Did not pass in this run'} · {g.node}{' '}
+                    {g.passed === true ? '✓ Passed' : g.passed === false ? (g.on_fail === 'skip' ? '⚠ Not met (the nodes after it were skipped)' : '⚠ Failed (warn only)') : '⚠ Did not pass in this run'} · {g.node}{' '}
                     <span style={{ ...mono, color: 'var(--text-dim)' }}>{g.rules.split('\n').filter(Boolean).join(' · ')}</span>
                   </div>
                 ))}
@@ -215,10 +230,19 @@ export function ServingModal() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {current.features.map(f => <span key={f.name} style={{ ...mono, fontSize: 11, padding: '2px 8px', borderRadius: 99, border: '1px solid var(--border2)', color: 'var(--text-dim)' }}>{f.name}: {f.kind}</span>)}
                 </div>
+                <div style={label}>Batch predictions</div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
+                  Score a whole table with the same preprocessing: add <b>Batch Predict</b> (model: <span style={mono}>{current.name}</span>) after a loader,
+                  then CSV Export, and put the pipeline on a schedule. Outside Athena: <span style={mono}>python service.py --predict-file new.csv --output predictions.csv</span>.
+                </div>
+                <div style={label}>Build</div>
+                <BuildSection slug={current.slug} build={current.build} tools={tools}
+                              onStart={target => startBuild(current.slug, target)} onCancel={() => cancelBuild(current.slug)} />
                 <div style={label}>Run it elsewhere</div>
                 <pre style={{ ...mono, margin: 0, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-dim)', padding: 10, whiteSpace: 'pre-wrap' }}>
 {`# from the unzipped folder (${current.slug}/), no Athena needed
 pip install -r requirements.txt && python service.py --port 8000
+python service.py --predict-file new.csv --output predictions.csv   # batch
 docker build -t ${current.slug} . && docker run -p 8000:8000 ${current.slug}
 bentoml serve service_bentoml:AthenaModel     # pip install bentoml`}
                 </pre>

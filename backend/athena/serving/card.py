@@ -95,7 +95,8 @@ def model_card(schema: dict[str, Any], rows: int) -> str:
     lines += ["## Quality gates", ""]
     if schema.get("quality_gates"):
         for g in schema["quality_gates"]:
-            state = {True: "passed", False: "failed (warn only)", None: "**did not pass in this run** (it failed and stopped the run, or didn't run)"}[g["passed"]]
+            failed = "not met (the nodes after it were skipped)" if g.get("on_fail") == "skip" else "failed (warn only)"
+            state = {True: "passed", False: failed, None: "**did not pass in this run** (it failed and stopped the run, or didn't run)"}[g["passed"]]
             lines += [f"- **{g['node']}** (`{g['id']}`): {state}", "", "  ```", *[f"  {r}" for r in g["rules"].splitlines() if r.strip()], "  ```"]
     else:
         lines.append("No Quality Gate checked this model.")

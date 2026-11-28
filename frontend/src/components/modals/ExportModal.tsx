@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { innerNodes, isSubflow } from '../../lib/subflow'
 import { usePipelineStore } from '../../store/pipelineStore'
@@ -8,11 +9,16 @@ const FORMATS = [
   { id: 'python',   label: 'Python Script',       icon: '🐍', desc: 'Clean pandas + scikit-learn code' },
   { id: 'notebook', label: 'Jupyter Notebook',     icon: '📓', desc: 'Interactive .ipynb with cells' },
   { id: 'json',     label: 'Pipeline JSON',        icon: '⚙',  desc: 'Serialized pipeline configuration' },
+  { id: 'airflow',  label: 'Airflow DAG',          icon: '🌀', desc: 'A DAG with one task per node, on the schedule below (.zip)' },
+  { id: 'dagster',  label: 'Dagster job',          icon: '◆',  desc: 'A job with one op per node, and its schedule (.zip)' },
 ]
+
+const FILENAMES: Record<string, string> = { python: 'pipeline.py', notebook: 'pipeline.ipynb', json: 'pipeline.json', airflow: 'pipeline_airflow.zip', dagster: 'pipeline_dagster.zip' }
 
 export function ExportModal() {
   const { setShowExportModal, showToast } = useUiStore()
   const toPipelineSpec = usePipelineStore(s => s.toPipelineSpec)
+  const [cron, setCron] = useState('0 2 * * *')
   const nodes = usePipelineStore(s => s.nodes)
   // nodes inside subflows count too: they export as ordinary nodes
   const types = nodes.flatMap(n => (isSubflow(n.type) ? innerNodes(n.id, n.config).map(i => i.type) : [n.type]))
@@ -20,17 +26,19 @@ export function ExportModal() {
 
   const onExport = async (format: string) => {
     try {
-      const blob = await api.exportPipeline(toPipelineSpec(), format)
+      const orchestrated = format === 'airflow' || format === 'dagster'
+      const blob = await api.exportPipeline(toPipelineSpec(), format, orchestrated ? cron : undefined)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = format === 'python' ? 'pipeline.py' : format === 'notebook' ? 'pipeline.ipynb' : 'pipeline.json'
+      a.download = FILENAMES[format] ?? `pipeline.${format}`
       a.click()
       URL.revokeObjectURL(url)
       setShowExportModal(false)
       showToast(`Exported as ${format}`, 'success')
-    } catch {
-      showToast('Export failed', 'error')
+    } catch (e) {
+      const detail = (e as { detail?: { detail?: string } })?.detail?.detail
+      showToast(detail ? `Export failed: ${detail}` : 'Export failed', 'error')
     }
   }
 
@@ -63,6 +71,11 @@ export function ExportModal() {
               <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 14 }}>↓</span>
             </div>
           ))}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text-dim)' }}>
+            Airflow / Dagster schedule (cron)
+            <input aria-label="Export cron" value={cron} onChange={e => setCron(e.target.value)}
+                   style={{ flex: 1, fontFamily: 'var(--mono)', fontSize: 11.5, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)' }} />
+          </label>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
             The script and notebook run without Athena. To keep a trained model, add a Model Saver or Register Model node.
           </div>

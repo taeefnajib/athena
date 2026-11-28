@@ -32,6 +32,8 @@ class NodeFinish(BaseModel):
     cached: bool = False
     """True when the node's result was reused from an earlier run instead of recomputed."""
     documents: list[str] = []
+    halted: bool = False
+    """True when the node chose to skip everything after it (Quality Gate with on_fail=skip); those nodes don't run."""
     """Names of the HTML reports the node produced (fetched separately; see GET /api/runs/{run}/documents)."""
 
 

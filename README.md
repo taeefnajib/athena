@@ -1,30 +1,71 @@
-# Athena — Local No-Code AutoML Platform
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.png">
+    <img alt="Athena" src="docs/assets/logo-light.png" width="420">
+  </picture>
+</p>
 
-A graph-based, locally-run machine learning workflow builder. Design ML pipelines visually, execute them with real Python ML libraries, inspect intermediate results, and export clean standalone code — all on your own machine with no cloud dependency.
+<p align="center">
+  <b>Build, run and ship machine-learning pipelines visually, on your own machine.</b><br>
+  An open-source alternative to SageMaker Canvas: wire nodes on a canvas, run real pandas, scikit-learn and XGBoost underneath, and export clean Python.
+</p>
+
+<p align="center">
+  <a href="#setup"><img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white"></a>
+  <a href="#setup"><img alt="React 18" src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=black"></a>
+  <a href="https://fastapi.tiangolo.com"><img alt="FastAPI" src="https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white"></a>
+  <a href="https://scikit-learn.org"><img alt="scikit-learn" src="https://img.shields.io/badge/ML-scikit--learn%20%7C%20XGBoost-F7931E?logo=scikitlearn&logoColor=white"></a>
+  <a href="#security-note"><img alt="Local-first, no telemetry" src="https://img.shields.io/badge/local--first-no%20telemetry-2ea44f"></a>
+  <a href="https://github.com/taeefnajib/athena/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/taeefnajib/athena?style=flat&logo=github"></a>
+</p>
+
+<p align="center">
+  <a href="#setup">Quick start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a> ·
+  <a href="docs/PLUGINS.md">Plugins</a>
+</p>
+
+<p align="center">
+  <img alt="Loading a template, running it, and inspecting the results in Athena" src="docs/assets/demo.gif" width="100%">
+</p>
 
 ---
 
+## Features
+
+- **Visual pipelines that really run.** Drag nodes from a library of 100+ (loaders, cleaning, feature engineering, models, evaluation, explainability, forecasting, clustering), connect typed ports and click **Run**. Every node runs real Python in a worker process, and its status reflects what actually happened.
+- **Inspect everything.** Data previews and full profiles of any table, metrics, plots, logs, and the exact Python each node becomes.
+- **Export clean code.** A standalone Python script or Jupyter notebook that follows your graph, tested to produce the same results as Athena. Also exports Airflow DAGs and Dagster jobs.
+- **Connect to your data.** Databases (PostgreSQL, MySQL, SQL Server, SQLite, DuckDB), files, cloud storage, SaaS apps and REST APIs, with credentials kept in your OS keychain.
+- **AutoML and tuning.** FLAML AutoML search, Optuna tuning, LightGBM / CatBoost / XGBoost, calibration and decision thresholds.
+- **Track and register.** Optional MLflow experiment tracking and model registry, local or remote.
+- **Serve and monitor.** Package a model and start a local prediction endpoint with Prometheus metrics and request logs; Evidently drift and data-quality reports; quality gates, fairness checks and model cards.
+- **Automate.** Cron schedules for saved pipelines, with retraining only when the data drifts.
+- **Fast iteration.** A content-addressed cache, "Run from here", subflows you can reuse, version comparison and dataset snapshots.
+- **Local-first.** No account, no cloud, no telemetry. Light and dark themes.
+
 ## Screenshots
 
-The canvas — drag nodes from the library on the left, wire them together, and run:
-
-![Empty canvas with node library](images/01-canvas-empty.jpg)
-
-**Classification Starter** — CSV → Imputer → Scaler → Train/Test → Random Forest → Metrics + Confusion Matrix. All nodes complete and turn green:
-
-![Classification Starter pipeline completed](images/02-classification-run-completed.jpg)
-
-Click any completed node to see real metrics computed by scikit-learn — no mock numbers:
-
-![Classification metrics panel](images/03-classification-metrics.jpg)
-
-**Regression Pipeline** — CSV → Imputer → Feature Gen → Train/Test → Linear Regression → Metrics + Residuals:
-
-![Regression Pipeline completed with RMSE/MAE/R² metrics](images/04-regression-run-completed.jpg)
-
-**NLP Pipeline** — CSV → TF-IDF Vectorizer → Train/Test → Logistic Regression → Metrics + SHAP:
-
-![NLP Pipeline completed](images/05-nlp-run-completed.jpg)
+<table>
+  <tr>
+    <td width="50%"><img alt="A completed classification pipeline" src="docs/assets/canvas.jpg"><br><sub><b>Canvas.</b> A classification pipeline after a run: every node green, results cached for the next run.</sub></td>
+    <td width="50%"><img alt="Metrics in the inspector" src="docs/assets/metrics.jpg"><br><sub><b>Metrics.</b> Real scores computed by scikit-learn, no mock numbers.</sub></td>
+  </tr>
+  <tr>
+    <td><img alt="Confusion matrix preview" src="docs/assets/plot.jpg"><br><sub><b>Plots.</b> Confusion matrix, ROC, residuals, SHAP and more, downloadable as PNG.</sub></td>
+    <td><img alt="Per-node generated code" src="docs/assets/code.jpg"><br><sub><b>Code.</b> The Python each node becomes in the export.</sub></td>
+  </tr>
+  <tr>
+    <td><img alt="Export dialog" src="docs/assets/export.jpg"><br><sub><b>Export.</b> Script, notebook, pipeline JSON, Airflow DAG or Dagster job.</sub></td>
+    <td><img alt="Schedules window" src="docs/assets/schedules.jpg"><br><sub><b>Schedules.</b> Run saved pipelines on cron, with a history of every run.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img alt="Light theme" src="docs/assets/light.jpg"><br><sub><b>Light theme.</b> Both themes are first-class.</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -101,7 +142,7 @@ npm run dev
 ```
 
 This launches:
-- **Backend** → `http://localhost:8000` (FastAPI + uvicorn, hot-reload on)
+- **Backend** → `http://localhost:8001` (FastAPI + uvicorn, hot-reload on)
 - **Frontend** → `http://localhost:5173` (Vite dev server, HMR on)
 
 Open **`http://localhost:5173`** in your browser.
@@ -111,7 +152,7 @@ Open **`http://localhost:5173`** in your browser.
 **Backend only:**
 ```bash
 cd backend
-uv run uvicorn athena.main:app --reload --port 8000
+uv run uvicorn athena.main:app --reload --port 8001
 ```
 
 **Frontend only:**
@@ -120,7 +161,7 @@ cd frontend
 npm run dev
 ```
 
-> The frontend proxies `/api` and `/ws` to `localhost:8000`, so both must be running for the app to work.
+> The frontend proxies `/api` and `/ws` to `localhost:8001` (set `BACKEND_PORT` to use another port), so both must be running for the app to work.
 
 ---
 
@@ -129,10 +170,10 @@ npm run dev
 1. **Build a pipeline** — drag nodes from the left sidebar onto the canvas, connect output ports to input ports.
 2. **Configure nodes** — click any node to open the inspector panel on the right; edit settings in the Settings tab.
 3. **Run** — click **Run** (or press `Ctrl/⌘ + Enter`). Nodes light up green as they execute.
-4. **Inspect results** — click a completed node and switch to the **Data Preview**, **Logs**, or **Metrics** tabs. In **Data Preview**, **Profile** opens a full profile of any table output, and **↓** downloads any output (tables as CSV, models as joblib files).
+4. **Inspect results** — click a completed node and switch to the **Preview**, **Logs**, or **Metrics** tabs. In **Preview**, **Profile** opens a full profile of any table output, and **↓** downloads any output (tables as CSV, models as joblib files).
    The **Code** tab shows the Python that node becomes in the export (with **Full script** for everything); Custom Code and SQL fields are code editors with syntax highlighting. **Tidy layout** (the last button in the canvas controls) arranges the nodes left to right; Ctrl+Z undoes it.
-5. **Export code** — click **Export Code** in the top bar to download a standalone Python script, a Jupyter notebook (one cell per node), or the pipeline JSON. The code needs only the libraries it imports, follows your graph exactly, and is tested to produce the same results as running the pipeline in Athena. Plots are saved as PNG files next to the script.
-6. **Save / Load** — click **Save** (or `Ctrl/⌘ + S`) and enter a file path. Load pipelines via `POST /api/pipelines/load` or by adding a load button (coming in v1.1).
+5. **Export code** — click **Export Code** in the top bar to download a standalone Python script, a Jupyter notebook (one cell per node), the pipeline JSON, or an Airflow DAG / Dagster job. The code needs only the libraries it imports, follows your graph exactly, and is tested to produce the same results as running the pipeline in Athena. Plots are saved as PNG files next to the script.
+6. **Save / Load** — click **Save** (or `Ctrl/⌘ + S`) and enter a file path; **Load** opens a saved `.athena` file or one from your library.
 
 ### Connections (databases)
 
@@ -180,8 +221,11 @@ After a run, select a model node (or Pipeline Wrapper, Calibration, Decision Thr
 
 - `service.py` (FastAPI: `POST /predict`, `GET /schema`, `GET /health`, interactive docs at `/docs`), `model.joblib`, `schema.json` (the features, their kinds and an example request built from medians, never a real row), pinned `requirements.txt`, a `Dockerfile`, a BentoML service with `bentofile.yaml`, and a README. It runs without Athena.
 - **Serving** (top bar) lists your packaged models. **Start endpoint** runs one locally (its own process, reachable only from this machine, stopped when Athena stops); the test console sends a request and shows the answer. **Download .zip** to run it elsewhere: `python service.py`, `docker build`, or `bentoml serve`.
+- **Build** turns a packaged model into a Docker image (`docker build`) or a Bento (`bentoml build`) with your own Docker / BentoML, in the background: the Serving window follows the build log and, when it's done, shows the command to run it (`docker run --rm -p 8000:8000 <name>:latest`). The first build downloads the base image and the pinned packages.
 
-**It takes raw rows.** The service replays the pipeline's fitted preprocessing before predicting: Missing Value Imputer, Scaler, One-Hot / Label Encoder, Type Converter, Column Renamer / Selector, Feature Generator, Date Feature Extractor, Text Vectorizer and PCA, each with exactly what it learned in training. Steps that only shape the training data (removing duplicates or outliers, sampling, SMOTE and other balancing) are skipped. Before packaging, Athena replays the chain on the training rows and checks that it reproduces the model's training features exactly; if it doesn't, or a step can't be replayed yet (e.g. Outlier Detector in clip mode, String Splitter, a merge), the Serving window names the steps requests must already reflect.
+- **Batch predictions:** the **Batch Predict** node scores a whole table with a packaged model (its preprocessing included) and adds `prediction` and `proba_<class>` columns; follow it with CSV Export and schedule the pipeline for recurring scoring. Outside Athena, the bundle does the same: `python service.py --predict-file new.csv --output predictions.csv` (CSV or Parquet).
+
+**It takes raw rows.** The service replays the pipeline's fitted preprocessing before predicting: Missing Value Imputer, Scaler, One-Hot / Label Encoder, Type Converter, Column Renamer / Selector, Feature Generator, Date Feature Extractor, Text Vectorizer, PCA, String Splitter, Feature Importance Selection and Outlier Detector in clip or flag mode, each with exactly what it learned in training. A **Data Merge** that enriches the data from another table (inner or left join, one row per key on the right) is replayed as a lookup: the service joins each request with that table as it was in training, which is saved in the bundle, so check it's something you're happy to ship. Steps that only shape the training data (removing duplicates or outliers, sampling, SMOTE and other balancing) are skipped. Before packaging, Athena replays the chain on the training rows and checks that it reproduces the model's training features exactly; if it doesn't, or a step can't be replayed (Custom Code, Data Validator, an outer join…), the Serving window names the steps requests must already reflect.
 
 ### Quality gates, fairness and model cards
 
@@ -207,6 +251,15 @@ Install the extra once: `uv sync --extra monitoring` (Evidently).
 - **Data Quality Report** summarises a table (missing values, duplicated rows, constant or empty columns, per-column statistics), side by side with a reference when one is connected.
 - **Gate on them** like any metric: `drifted_columns == 0`, `prediction_drift == 0`, `missing_share <= 0.05` in a Quality Gate. With MLflow tracking on, the HTML reports are logged with the run (`athena/reports/<node>/`).
 - **Live traffic:** local endpoints log every predicted row (its raw features, the prediction and a timestamp) to `logs/requests.jsonl` in their bundle and expose **Prometheus metrics** at `/metrics` (requests by status, latency histogram, rows, predictions by class). The **Endpoint Requests** node reads that log as a table: connect it as the *current* input of Data Drift Report or Prediction Drift, with the training data as the reference, to see whether what the model receives still looks like what it learned from. Outside Athena, `python service.py --log-requests requests.jsonl` does the same.
+
+### Schedules: run pipelines automatically
+
+**Schedules** (top bar) runs a saved pipeline file on a cron schedule: pick the file (or one from your library), a preset or a cron expression (`0 2 * * *` is every day at 02:00; the window shows what it means and the next three times), and save. **Run now** starts it immediately, and each schedule keeps the history of its runs: when, why, how long, and which node failed.
+
+- Schedules run while Athena is running, in this computer's local time. Times missed while Athena was closed aren't caught up, and a scheduled run waits if another pipeline is running (it never starts twice). `ATHENA_SCHEDULER=false` keeps them without running them.
+- The **saved file** runs, not the canvas: save your changes for the next run to pick them up.
+- **Retrain only when the data drifts:** Data Drift Report (new data against the training data) → **Quality Gate** with the rule `dataset_drift == 1` and *When a rule fails* set to **skip**, with the new data passing through the gate into training and Model Saver / Register Model. Without drift the gate skips everything after it and the run still completes; with drift the model is retrained on the new data.
+- **Airflow and Dagster:** *Export Airflow DAG* / *Export Dagster job* (in Schedules, or Export Code with a cron) give a zip with a DAG or job that runs each node as its own task (so the orchestrator shows every step and can retry one), on the schedule, plus the standalone script, ready to drop into your orchestrator.
 
 ### Comparing versions
 
@@ -386,11 +439,12 @@ All backend settings are environment variables prefixed `ATHENA_`:
 | `ATHENA_KEEP_CACHE` | `false` | Keep cached node results when Athena restarts (otherwise the cache is cleared on exit) |
 | `ATHENA_LOG_LEVEL` | `INFO` | structlog level |
 | `ATHENA_ALLOW_CUSTOM_CODE` | `true` | Set to `false` to disable the Custom Code node |
+| `ATHENA_SCHEDULER` | `true` | Set to `false` to keep schedules without running them |
 
 Example — raise the node timeout:
 
 ```bash
-ATHENA_NODE_TIMEOUT_S=600 uv run uvicorn athena.main:app --reload --port 8000
+ATHENA_NODE_TIMEOUT_S=600 uv run uvicorn athena.main:app --reload --port 8001
 ```
 
 ---
@@ -436,7 +490,7 @@ Athena binds to `127.0.0.1` by default and is intended for **single-user, local 
 ## Troubleshooting
 
 **"Couldn't reach the backend" toast on Run**
-- Make sure `uvicorn` is running on port 8000.
+- Make sure `uvicorn` is running on port 8001 (or the port in `BACKEND_PORT`).
 - Check the terminal for Python import errors on startup.
 
 **Frontend shows a blank page**
@@ -446,14 +500,14 @@ Athena binds to `127.0.0.1` by default and is intended for **single-user, local 
 **`uv: command not found`**
 - Re-open your terminal after installing uv, or run `source ~/.bashrc` / `source ~/.zshrc`.
 
-**Port 8000 already in use**
+**Port 8001 already in use**
 ```bash
 # macOS / Linux
-lsof -i :8000 | grep LISTEN
+lsof -i :8001 | grep LISTEN
 kill -9 <PID>
 
 # Windows PowerShell
-netstat -ano | findstr :8000
+netstat -ano | findstr :8001
 Stop-Process -Id <PID> -Force
 ```
 

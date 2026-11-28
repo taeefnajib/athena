@@ -75,11 +75,11 @@ export const api = {
   listPipelines: () =>
     request<{ files: Array<{ name: string; path: string; modified: number }> }>(`${BASE}/pipelines/library`),
 
-  exportPipeline: async (spec: PipelineSpec, format: string): Promise<Blob> => {
+  exportPipeline: async (spec: PipelineSpec, format: string, cron?: string): Promise<Blob> => {
     const res = await fetch(`${BASE}/pipelines/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spec, format }),
+      body: JSON.stringify(cron ? { spec, format, cron } : { spec, format }),
     })
     if (!res.ok) throw await res.json()
     return res.blob()

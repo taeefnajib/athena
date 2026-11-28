@@ -129,6 +129,7 @@ Layout (left → right): logo · Run · Stop · | · Undo · Redo · | · Save �
 - Stop is disabled while `status !== 'running'`.
 - Status pill uses an animated pulsing dot when running.
 - Status colors come from CSS vars (`--success`, `--error`, `--running`, `--text-muted`).
+- The logo is `public/logo-mark.png` (favicons are next to it in `public/`; the README logos and screenshots live in `docs/assets/`). The node/edge stats show only on wide screens (`2xl`) so the bar fits at 1440 px.
 
 ### LeftSidebar (Node Library)
 - Search input at the top, debounced 150ms, matches against `label` and `description`.
@@ -157,7 +158,11 @@ Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**, **Code** 
 
 **Serving** (`modals/ServingModal.tsx`): Deploy in a model output's actions (`RightSidebar/OutputActions.tsx`) sets `uiStore.deployTarget` and opens the modal, which packages the model through `/api/serving/bundles`, starts / stops local endpoints, and has a test console that calls the endpoint through the backend (no CORS, no direct port access). It shows what the service does with requests: the replayed preprocessing (`preprocessing_replayed`, verified or not), training-only steps that are skipped, and a warning listing `preprocessing_not_included` when some steps can't be replayed.
 
+Its **Build** section (`modals/BuildSection.tsx`) builds the bundle into a Docker image or a Bento through `/api/serving/bundles/{slug}/build`, disabled with an install hint when `/api/serving/tools` says the command is missing; the modal polls every 2 s while a build runs and shows the log and the run command.
+
 **Reports and monitoring**: a node whose `node_finish` lists `documents` (the Evidently nodes) gets *Open report* (new tab) and a download in `RightSidebar/OutputActions.tsx`, via `lib/profile.ts: documentUrl`. The Serving modal's Monitoring section shows how many request rows the endpoint has logged, links its Prometheus metrics (through the backend), and explains how to compare live traffic with the training data (Endpoint Requests → Data Drift Report).
+
+**Schedules** (`modals/SchedulesModal.tsx`, TopBar *Schedules*): list / create / edit / pause / delete schedules of saved pipeline files (path, or one from `/api/pipelines/library`), a cron field with presets and a live preview (`/api/schedules/preview`), *Run now*, Airflow / Dagster export links, and the run history (polled while a run is going). Export Code also offers Airflow and Dagster with a cron field. A Quality Gate in skip mode shows as "Not met (the nodes after it were skipped)" in the Serving window.
 
 **Tidy layout** (canvas controls) runs `autoLayout` (dagre, left to right) and applies it with `applyLayout` as one undo step that first records the current positions, so Ctrl+Z restores them exactly. It only ever runs on that explicit command.
 

@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Athena — AutoML Platform</title>
+  <title>Athena — Visual ML Platform</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,6 +55,7 @@
       --chart-mark:       oklch(66% 0.16 225);
       --chart-mark-hover: oklch(74% 0.15 225);
       --chart-grid:       rgba(255,255,255,0.08);
+      --minimap-mask:     rgba(0,0,0,0.55);
 
       /* Code editor syntax colours (CodeMirror) */
       --code-keyword:  oklch(74% 0.14 300);
@@ -77,6 +81,7 @@
       --chart-mark:       oklch(58% 0.17 225);
       --chart-mark-hover: oklch(50% 0.17 225);
       --chart-grid:       rgba(0,0,0,0.08);
+      --minimap-mask:     rgba(26,29,46,0.12);
       --code-keyword:  oklch(47% 0.19 300);
       --code-string:   oklch(47% 0.13 150);
       --code-number:   oklch(52% 0.15 55);
@@ -165,6 +170,7 @@
     .react-flow__controls-button { background: var(--panel) !important; border-bottom: 1px solid var(--border) !important; color: var(--text-dim) !important; }
     .react-flow__controls-button:hover { background: var(--card) !important; }
     .react-flow__minimap { background: var(--panel) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; }
+    .react-flow__minimap-mask { fill: var(--minimap-mask) !important; }
     .react-flow__background { background-color: var(--bg) !important; }
   </style>
 </head>

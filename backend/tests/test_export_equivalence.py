@@ -332,8 +332,10 @@ def test_quality_gate_and_fairness(tmp_path: Path):
     g.n("gate", "quality_gate", rules="f1 >= 0.5\ndemographic_parity_difference <= 0.9")
     g.e("lr_m", "gate", 0, 0); g.e("fair", "gate", 0, 1); g.e("lr", "gate", 0, 3)
     g.n("warn", "quality_gate", rules="f1 >= 0.999", on_fail="warn"); g.e("lr_m", "warn", 0, 0)
+    g.n("skip", "quality_gate", rules="f1 >= 0.5", on_fail="skip"); g.e("lr_m", "skip", 0, 0); g.e("csv", "skip", 0, 4)
     ns = run_both(g.spec(), tmp_path)
     assert ns["report_gate"]["passed"] == 1.0 and ns["report_warn"]["passed"] == 0.0
+    assert len(ns["df_skip"]) == 600  # the dataset passes through a gate that's met
 
 
 def test_evidently_monitoring(tmp_path: Path):
@@ -374,6 +376,36 @@ def test_endpoint_requests(tmp_path: Path, monkeypatch):
     g.n("tail", "endpoint_requests", model="churn-model", last_n=3, include_prediction=False)
     ns = run_both(g.spec(), tmp_path)
     assert len(ns["df_all"]) == 8 and list(ns["df_tail"].columns) == ["age", "plan", "income", "timestamp"]
+
+
+def test_batch_predict(tmp_path: Path, monkeypatch):
+    """Batch Predict loads a packaged model from its bundle: Athena and the script score the same rows identically."""
+    import uuid
+
+    from athena.config import settings
+    from athena.serving.bundle import bundle_from_run
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    t = G()
+    t.n("csv", "csv_loader", path=str(BACKEND / "data.csv"))
+    t.n("imp", "imputer", strategy="median")
+    t.n("tt", "train_test")
+    t.n("rf", "rf", n_estimators=15)
+    t.e("csv", "imp")
+    t.e("imp", "tt")
+    t.e("tt", "rf", 0, 0)
+    t.e("tt", "rf", 1, 1)
+    train = t.spec()
+    run_id = str(uuid.uuid4())
+    assert run_spec(train, run_id, lambda e: None, lambda: False, tmp_path / "cache" / run_id) == "completed"
+    bundle_from_run("Churn model", train, run_id, "rf", 0)
+    g = G()
+    g.n("new", "csv_loader", path=str(BACKEND / "data.csv"))
+    g.n("bp", "batch_predict", model="Churn model")
+    g.n("lean", "batch_predict", model="churn-model", probabilities=False, keep_columns=False)
+    g.e("new", "bp")
+    g.e("new", "lean")
+    ns = run_both(g.spec(), tmp_path)
+    assert "proba_1" in ns["df_bp"].columns and list(ns["df_lean"].columns) == ["prediction"]
 
 
 def test_every_template_is_exercised():

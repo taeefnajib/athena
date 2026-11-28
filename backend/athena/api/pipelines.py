@@ -104,8 +104,17 @@ async def export(req: ExportRequest):
         content = pipeline_to_json(req.spec)
         filename = "pipeline.json"
         media_type = "application/json"
+    elif fmt in ("airflow", "dagster"):
+        from athena.core.cron import CronError
+        from athena.core.orchestrators import orchestrator_zip
+        try:
+            data, filename = orchestrator_zip(req.spec, fmt, req.cron)
+        except CronError as exc:
+            raise HTTPException(400, detail={"detail": str(exc), "code": "CRON_INVALID"}) from exc
+        return StreamingResponse(io.BytesIO(data), media_type="application/zip",
+                                 headers={"Content-Disposition": f'attachment; filename="{filename}"'})
     else:
-        raise HTTPException(400, detail={"detail": f"Unknown export format {req.format!r} (python, notebook or json)",
+        raise HTTPException(400, detail={"detail": f"Unknown export format {req.format!r} (python, notebook, json, airflow or dagster)",
                                          "code": "EXPORT_FORMAT_UNKNOWN"})
 
     return StreamingResponse(

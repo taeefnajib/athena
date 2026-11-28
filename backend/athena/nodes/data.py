@@ -176,10 +176,15 @@ class DataMergeHandler:
         key = on_cols if len(on_cols) > 1 else on_cols[0]
         merged = pd.merge(left, right, on=key, how=cfg.how)
         ctx.logger.info("Merged", how=cfg.how, rows=len(merged))
+        # Serving replays the merge as a lookup: request rows (the left side) joined with the right table as it was
+        # in training. Only when that gives one row per request (unique keys on the right, rows not added or dropped).
+        lookup = cfg.how in ("inner", "left") and not right.duplicated(subset=on_cols).any()
         return HandlerResult(
             outputs=[merged],
             preview=preview_dataframe(merged),
             metrics={"rows": float(len(merged)), "cols": float(len(merged.columns))},
+            replay={"kind": "lookup", "on": on_cols, "table": right, "follow_port": 0,
+                    "note": f"joins each request with the {len(right):,}-row right table saved with the model"} if lookup else None,
         )
 
 

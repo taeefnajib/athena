@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Any, Literal
 import pandas as pd
 import numpy as np
 from sklearn.impute import SimpleImputer, KNNImputer
@@ -144,21 +144,28 @@ class OutlierHandler:
                 replay={"kind": "skip"},
             )
 
+        bounds = {}
+        for col in num_cols:
+            q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
+            iqr = q3 - q1
+            bounds[col] = (float(q1 - 1.5 * iqr), float(q3 + 1.5 * iqr))
+        flag: dict[str, Any] = {"kind": "outlier_flag", "method": cfg.method, "cols": num_cols}
         if cfg.method == "IQR":
             mask = pd.Series(True, index=df.index)
-            for col in num_cols:
-                q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
-                iqr = q3 - q1
-                mask &= df[col].between(q1 - 1.5 * iqr, q3 + 1.5 * iqr)
+            for col, (lo, hi) in bounds.items():
+                mask &= df[col].between(lo, hi)
+            flag["bounds"] = bounds
         elif cfg.method == "Z-Score":
             filled = df[num_cols].fillna(0)
             std = filled.std().replace(0, 1)
             z = ((filled - filled.mean()) / std).abs()
             mask = (z < cfg.threshold).all(axis=1)
+            flag.update(mean=filled.mean().to_dict(), std=std.to_dict(), threshold=cfg.threshold)
         else:  # Isolation Forest
             clf = IsolationForest(contamination=0.1, random_state=42)
             preds = clf.fit_predict(df[num_cols].fillna(0))
             mask = pd.Series(preds == 1, index=df.index)
+            flag["model"] = clf
 
         outlier_rows = df[~mask]
 
@@ -166,10 +173,8 @@ class OutlierHandler:
             result = df[mask]
         elif cfg.action == "clip":
             result = df.copy()
-            for col in num_cols:
-                q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
-                iqr = q3 - q1
-                result[col] = df[col].clip(q1 - 1.5 * iqr, q3 + 1.5 * iqr)
+            for col, (lo, hi) in bounds.items():
+                result[col] = df[col].clip(lo, hi)
         else:  # flag
             result = df.copy()
             result["is_outlier"] = (~mask).astype(int)
@@ -180,8 +185,8 @@ class OutlierHandler:
             outputs=[result, outlier_rows],
             preview=preview_dataframe(result),
             metrics={"outliers_found": float(n_outliers), "remaining": float(len(result))},
-            # removing rows is training-only; clipping / flagging change values and aren't replayed yet
-            replay={"kind": "skip"} if cfg.action == "remove" else None,
+            # removing rows is training-only; clipping and flagging are redone with what training learned
+            replay={"remove": {"kind": "skip"}, "clip": {"kind": "clip", "bounds": bounds}}.get(cfg.action, flag),
         )
 
 

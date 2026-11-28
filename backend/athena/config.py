@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     """Keep cached node results across restarts (ATHENA_KEEP_CACHE). Off: the cache is cleared when Athena stops."""
     log_level: str = "INFO"
     allow_custom_code: bool = True
+    scheduler: bool = True
+    """Run schedules while Athena is running (ATHENA_SCHEDULER). Off: schedules are kept but never fire."""
 
     model_config = {"env_prefix": "ATHENA_"}
 

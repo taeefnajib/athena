@@ -85,27 +85,31 @@ def _athena_fairness(model, X, y, column, positive=""):
 
 @node(
     "quality_gate", label="Quality Gate", category="deploy",
-    description="Acceptance criteria (e.g. f1 >= 0.9, drifted_columns == 0): stops the run if they fail, so nothing after it sees a failing model",
+    description="Acceptance criteria (e.g. f1 >= 0.9, drifted_columns == 0): when they fail, stop the run, skip what comes "
+                "after the gate, or warn. Pass a model or a dataset through it to guard what uses them",
     inputs=[Port("report", "report"), Port("report_2", "report", optional=True), Port("report_3", "report", optional=True),
-            Port("model", "model", optional=True)],
-    outputs=[Port("model", "model"), Port("report", "report")],
+            Port("model", "model", optional=True), Port("dataset", "dataset", optional=True)],
+    outputs=[Port("model", "model"), Port("report", "report"), Port("dataset", "dataset")],
     fields={
         "rules": ui("Rules", widget="textarea", mono=True,
                     help="One per line: metric, then >= <= > < == or !=, then a number. Metrics come from the connected reports "
                          "(Metrics, Fairness Check, Drift Detection...). # starts a comment."),
-        "on_fail": ui("When a rule fails", help="stop: fail the run here, so later nodes (save, register, deploy) don't run. warn: log and carry on."),
+        "on_fail": ui("When a rule fails", help="stop: fail the run here, so later nodes (save, register, deploy) don't run. "
+                      "skip: don't run the nodes after the gate, but finish the run normally (e.g. retrain only when drift is "
+                      "detected: rule dataset_drift == 1). warn: log and carry on."),
     },
     code=EXPORT["quality_gate"],
 )
 class QualityGateHandler:
     class Config(BaseModel):
         rules: str = "f1 >= 0.8"
-        on_fail: Literal["stop", "warn"] = "stop"
+        on_fail: Literal["stop", "skip", "warn"] = "stop"
 
     def __call__(self, ctx: ExecutionContext) -> HandlerResult:
         cfg = self.Config(**ctx.config)
         reports = [r for r in ctx.inputs[:3] if r is not None]
         model = ctx.inputs[3] if len(ctx.inputs) > 3 else None
+        dataset = ctx.inputs[4] if len(ctx.inputs) > 4 else None
         results = _athena_check_rules(reports, cfg.rules)
         lines = [f"{'✓' if ok else '✗'} {rule}   (got {value:.4g})" for rule, _, value, ok in results]
         passed = all(ok for *_, ok in results)
@@ -115,8 +119,9 @@ class QualityGateHandler:
         if failed and cfg.on_fail == "stop":
             raise ValueError(f"Quality gate failed: {'; '.join(failed)}")
         report = {"passed": float(passed), "rules_passed": float(sum(ok for *_, ok in results)), "rules_total": float(len(results))}
-        verdict = "PASSED" if passed else "FAILED (warn only: the run carried on)"
-        return HandlerResult(outputs=[model, report], metrics=report,
+        skip = bool(failed) and cfg.on_fail == "skip"
+        verdict = "PASSED" if passed else ("NOT MET: the nodes after it were skipped" if skip else "FAILED (warn only: the run carried on)")
+        return HandlerResult(outputs=[model, report, dataset], metrics=report, halt=f"Rules not met ({'; '.join(failed)})" if skip else None,
                              preview=TextPreview(text=f"Quality gate {verdict}\n\n" + "\n".join(lines)))
 
 
