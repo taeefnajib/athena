@@ -259,7 +259,7 @@ Install the extra once: `uv sync --extra monitoring` (Evidently).
 - Schedules run while Athena is running, in this computer's local time. Times missed while Athena was closed aren't caught up, and a scheduled run waits if another pipeline is running (it never starts twice). `ATHENA_SCHEDULER=false` keeps them without running them.
 - The **saved file** runs, not the canvas: save your changes for the next run to pick them up.
 - **Retrain only when the data drifts:** Data Drift Report (new data against the training data) → **Quality Gate** with the rule `dataset_drift == 1` and *When a rule fails* set to **skip**, with the new data passing through the gate into training and Model Saver / Register Model. Without drift the gate skips everything after it and the run still completes; with drift the model is retrained on the new data.
-- **Airflow and Dagster:** *Export Airflow DAG* / *Export Dagster job* (in Schedules, or Export Code with a cron) give a zip with the pipeline script and a DAG or job running it on the schedule, ready to drop into your orchestrator.
+- **Airflow and Dagster:** *Export Airflow DAG* / *Export Dagster job* (in Schedules, or Export Code with a cron) give a zip with a DAG or job that runs each node as its own task (so the orchestrator shows every step and can retry one), on the schedule, plus the standalone script, ready to drop into your orchestrator.
 
 ### Comparing versions
 
