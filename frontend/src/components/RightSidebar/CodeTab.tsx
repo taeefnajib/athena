@@ -26,7 +26,14 @@ export function CodeTab({ nodeId }: { nodeId: string }) {
     return () => { alive = false; clearTimeout(timer) }
   }, [nodes, edges, toPipelineSpec])
 
-  const section = data?.sections.find(s => s.node_id === nodeId)
+  // A subflow's code is its inner nodes' sections (ids <subflow>.<inner>), in order.
+  const parts = data?.sections.filter(s => s.node_id === nodeId || s.node_id.startsWith(`${nodeId}.`)) ?? []
+  const section = parts.length ? {
+    label: parts.length > 1 ? `${parts.length} nodes` : parts[0].label,
+    exported: parts.every(p => p.exported),
+    imports: [...new Set(parts.flatMap(p => p.imports))],
+    code: parts.map(p => (parts.length > 1 ? `# --- ${p.label} (${p.node_id}) ---\n${p.code}` : p.code)).join('\n\n'),
+  } : undefined
   const text = section ? [...section.imports, ...(section.imports.length ? [''] : []), section.code].join('\n') : ''
   const copy = (value: string) => navigator.clipboard.writeText(value).then(() => showToast('Copied to the clipboard', 'success'),
                                                                           () => showToast("Couldn't copy (clipboard blocked)", 'error'))

@@ -7,7 +7,7 @@ const DATASET_COMPATIBLE: Set<PortType> = new Set([
   'dataset', 'X_train', 'y_train', 'X_test', 'y_test', 'X_val', 'y_val',
 ])
 
-function portsCompatible(src: PortType, tgt: PortType): boolean {
+export function portsCompatible(src: PortType, tgt: PortType): boolean {
   if (src === tgt) return true
   // X_*/y_* → dataset  (split outputs into generic dataset inputs)
   if (tgt === 'dataset' && DATASET_COMPATIBLE.has(src)) return true

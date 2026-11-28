@@ -21,14 +21,22 @@ async def run_pipeline(req: RunRequest):
     if get_active_run_id() is not None:
         raise HTTPException(409, detail={"detail": "A pipeline is already running", "code": "RUN_ALREADY_IN_PROGRESS"})
 
-    nodes_dicts = [{"id": n.id} for n in req.spec.nodes]
-    edges_dicts = [{"source": e.source, "target": e.target} for e in req.spec.edges]
+    from pydantic import ValidationError
+
+    from athena.core.subflows import expand
+    try:  # subflows run as their inner nodes (ids <subflow>.<inner>)
+        spec, start_from = expand(req.spec, req.start_from)
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(400, detail={"detail": str(exc).splitlines()[0], "code": "SUBFLOW_INVALID"}) from exc
+
+    nodes_dicts = [{"id": n.id} for n in spec.nodes]
+    edges_dicts = [{"source": e.source, "target": e.target} for e in spec.edges]
 
     if has_cycle(nodes_dicts, edges_dicts):
         raise HTTPException(400, detail={"detail": "Pipeline has a cycle", "code": "PIPELINE_HAS_CYCLE"})
 
     run_id = str(uuid.uuid4())
-    asyncio.create_task(execute(req.spec, run_id, broker, req.start_from))
+    asyncio.create_task(execute(spec, run_id, broker, start_from))
     return {"run_id": run_id}
 
 

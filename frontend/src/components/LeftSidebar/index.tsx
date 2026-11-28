@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { getNodeGroups, type NodeSpec } from '../../registry/nodeRegistry'
+import { SubflowLibrary } from './SubflowLibrary'
 
 export function LeftSidebar() {
   const [search, setSearch] = useState('')
@@ -30,6 +31,7 @@ export function LeftSidebar() {
         />
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <SubflowLibrary search={search} />
         {filtered.map(group => (
           <div key={group.id}>
             <div

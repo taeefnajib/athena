@@ -12,6 +12,8 @@ import { formatMetric } from '../../lib/formatMetric'
 import { RunFromHere } from './RunFromHere'
 import { ResourceField } from './ResourceField'
 import { CodeTab } from './CodeTab'
+import { SubflowInspector } from './SubflowInspector'
+import { isSubflow } from '../../lib/subflow'
 import { CodeEditor } from '../ui/LazyCodeEditor'
 import type { ArtifactPreview, LogEntry, ColumnInfo } from '../../types/pipeline'
 
@@ -32,7 +34,9 @@ export function RightSidebar({ onRunFrom }: { onRunFrom: (nodeId: string) => voi
           transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
           style={{ overflow: 'hidden', flexShrink: 0, height: '100%' }}
         >
-          <Inspector key={node.id} nodeId={node.id} nodeType={node.type} config={node.config} onRunFrom={onRunFrom} />
+          {isSubflow(node.type)
+            ? <SubflowInspector key={node.id} nodeId={node.id} config={node.config} onRunFrom={onRunFrom} Preview={PreviewTab} Logs={LogsTab} />
+            : <Inspector key={node.id} nodeId={node.id} nodeType={node.type} config={node.config} onRunFrom={onRunFrom} />}
         </motion.div>
       )}
     </AnimatePresence>

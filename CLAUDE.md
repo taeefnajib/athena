@@ -151,6 +151,8 @@ This is what the frontend sends to `POST /api/pipelines/run` and what's saved as
 
 Pipeline-level `metadata.tracking` (`{ enabled, connection, experiment, log_models, log_code }`) turns on MLflow tracking for every run; `connection: ""` is Athena's local store.
 
+**Subflows.** A node with `"type": "subflow"` groups other nodes. Its config is `{ name, description?, nodes: [NodeSpec…], edges: [EdgeSpec…], inputs: [{ name, type, node, port }], outputs: [...] }`: each input/output port maps to a port of an inner node (and may nest further subflows). Files keep subflows as they are; the backend expands them before running or exporting (`core/subflows.py`), naming inner nodes `<subflow id>.<inner id>`, so WS events for a subflow's work carry those ids.
+
 `version` is 2 (spec v2). The backend accepts v1 files (a strict subset) and upgrades them; the frontend keeps the v2 node fields through load and save (`pickPolicy` in `types/pipeline.ts`). Nodes reference external systems only by **connection name** (`"connection": "warehouse"`); credentials never appear in a spec.
 
 The backend must accept this verbatim. The frontend must produce nothing else. Schema drift between sides is the #1 thing to avoid — every change to a node's `config` shape is a breaking change to both halves.
@@ -217,6 +219,7 @@ Backend bugs (the executor itself failing) close the WS with code 1011. Frontend
 
 - **Topological order** — Kahn's algorithm. If a cycle is detected, reject the run with HTTP 400 before opening the WS.
 - **Caching** — each node's output is keyed by a hash of `(node.type, node.config, upstream keys, fingerprint of local input files)` and shared across runs in `~/.athena/cache/store/`. On re-run, handlers whose key is cached are skipped (`node_finish.cached: true`). Nodes declared `reusable=False` (side effects, live sources) and nodes with `cache: false` always execute; their key is salted with a digest of what they produced, so downstream nodes recompute exactly when that output changes. The store is LRU-trimmed to `ATHENA_CACHE_MAX_GB` after each run and purged on app close unless `ATHENA_KEEP_CACHE=true`.
+- **Subflows** — expanded into their inner nodes before validation, scheduling and export; a `start_from` id that is a subflow means all its inner nodes.
 - **Partial runs** — `POST /api/pipelines/run` accepts an optional `start_from: [node_id, ...]`. Those nodes and their descendants re-run; their ancestors are reused from the cache (or computed if missing); unrelated branches are skipped. The frontend exposes this as "Run from here" in the inspector, highlighting the nodes that will run while hovering.
 - **Concurrency** — single-pipeline-at-a-time for v1. Reject a second run with HTTP 409 while one is in flight. Nodes execute sequentially in topo order; parallelism within a level is a v2 concern.
 - **Resource limits** — wrap each handler in a soft timeout (default 5 minutes, configurable per node). On timeout, mark error and continue cleanup.

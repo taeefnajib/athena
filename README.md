@@ -168,6 +168,12 @@ Pull JSON from any REST API with the **API Fetch** node (`uv sync --extra api`, 
 - Nested objects become columns like `address__city`; nested lists are left out and listed in the Logs tab, or keep everything as JSON with *Nested data → json*.
 - dlt's anonymous telemetry is switched off, in Athena and in exported scripts.
 
+### Subflows: reusable groups of nodes
+
+Select a few nodes (Ctrl-click them, or Shift-drag a box around them) and press **Ctrl+G** (or the group button in the canvas controls). They become one **subflow** node; the connections that crossed the selection become its inputs and outputs. It runs, caches and exports exactly like the nodes inside it.
+
+Click a subflow to see the nodes inside with their status and previews, rename it, **Ungroup** it to edit (Ctrl+G again to regroup), or **Save to library**. Saved subflows appear under **My subflows** at the top of the node library; drag one into any pipeline.
+
 ### Re-running fast: the cache and "Run from here"
 
 - **Unchanged nodes aren't recomputed.** When you run again, every node whose settings, upstream nodes and input files are unchanged reuses its earlier result; it shows a **cached** tag and says so in its Logs tab. Change a node and only it and the nodes after it run again; edit the CSV file and everything that depends on it re-runs.

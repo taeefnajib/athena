@@ -67,6 +67,8 @@ def run_spec(
     from athena.config import settings
     from athena.plugins import load_plugins
     load_plugins()  # idempotent; the worker has already done it
+    from athena.core.subflows import expand
+    spec, start_from = expand(spec, start_from)  # usually already expanded by the API; a no-op then
     base_log = structlog.get_logger().bind(run_id=run_id)
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = ArtifactCache(store_dir_for(cache_dir))
