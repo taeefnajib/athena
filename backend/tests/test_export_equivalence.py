@@ -321,6 +321,20 @@ def test_dataset_snapshot(tmp_path: Path):
     assert len(list((tmp_path / "snaps").glob("customers-*.parquet"))) == 1  # Athena and the script wrote the same file
 
 
+def test_quality_gate_and_fairness(tmp_path: Path):
+    from tests.test_gates import groups_csv
+    g = G()
+    g.n("csv", "csv_loader", path=str(groups_csv(tmp_path)))
+    g.n("tt", "train_test", stratify=True); g.e("csv", "tt")
+    g.model("lr", "log_reg", "tt")
+    g.n("fair", "fairness_check", sensitive_col="region"); g.e("lr", "fair", 0, 0); g.e("tt", "fair", 2, 1); g.e("tt", "fair", 3, 2)
+    g.n("gate", "quality_gate", rules="f1 >= 0.5\ndemographic_parity_difference <= 0.9")
+    g.e("lr_m", "gate", 0, 0); g.e("fair", "gate", 0, 1); g.e("lr", "gate", 0, 3)
+    g.n("warn", "quality_gate", rules="f1 >= 0.999", on_fail="warn"); g.e("lr_m", "warn", 0, 0)
+    ns = run_both(g.spec(), tmp_path)
+    assert ns["report_gate"]["passed"] == 1.0 and ns["report_warn"]["passed"] == 0.0
+
+
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""

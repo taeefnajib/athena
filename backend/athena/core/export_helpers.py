@@ -81,6 +81,8 @@ HELPERS: dict[str, object] = {
     **{name: (lambda n=name: _class_source(f"athena.nodes.cluster.{n}")) for name in (
         "_athena_cluster_matrix", "_athena_silhouette", "_athena_auto_k", "_athena_cluster_profile", "_athena_cluster_report")},
     "_AthenaHasMorePaginator": lambda: _class_source("athena.connectors.saas_paginator._AthenaHasMorePaginator"),
+    "_athena_check_rules": lambda: _class_source("athena.nodes.gates._athena_check_rules"),
+    "_athena_fairness": lambda: _class_source("athena.nodes.gates._athena_fairness"),
     "_athena_snapshot": lambda: _class_source("athena.nodes.snapshot._athena_snapshot"),
     "_StatsBase": lambda: _class_source("athena.nodes.stats._StatsBase"),
     "_StatsOLS": lambda: _class_source("athena.nodes.stats._StatsOLS"),
