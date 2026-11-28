@@ -69,6 +69,11 @@ def _split_imports(code: str) -> tuple[list[str], str]:
 
 
 def build_sections(spec: PipelineSpec) -> list[Section]:
+    from athena.core.subflows import expand
+    try:
+        spec, _ = expand(spec)  # subflows export as their inner nodes
+    except ValueError as exc:
+        return [Section("subflow", "Subflow", "", f"# Not exported: {exc}", exported=False)]
     try:
         order = topo_sort([{"id": n.id} for n in spec.nodes], [{"source": e.source, "target": e.target} for e in spec.edges])
     except ValueError:

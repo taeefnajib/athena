@@ -1,2 +1,3 @@
 import { BaseNode } from './BaseNode'
-export const nodeTypes = { athena_node: BaseNode }
+import { SubflowNode } from './SubflowNode'
+export const nodeTypes = { athena_node: BaseNode, athena_subflow: SubflowNode }

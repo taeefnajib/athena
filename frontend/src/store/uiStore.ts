@@ -14,6 +14,8 @@ interface UiState {
   profileTarget: { nodeId: string; port: number } | null
   /** Nodes a pending "Run from here" would execute, highlighted on the canvas while hovering the button. */
   runPreview: string[] | null
+  /** Bumped when the subflow library changes, so the sidebar list refetches. */
+  subflowLibraryVersion: number
   toast: { msg: string; type: 'info' | 'success' | 'error' | 'warn' } | null
 
   setTheme: (theme: UiState['theme']) => void
@@ -27,6 +29,7 @@ interface UiState {
   setInspectorTab: (tab: UiState['inspectorTab']) => void
   setProfileTarget: (target: UiState['profileTarget']) => void
   setRunPreview: (ids: string[] | null) => void
+  bumpSubflowLibrary: () => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
   clearToast: () => void
 }
@@ -45,6 +48,7 @@ export const useUiStore = create<UiState>()(
       inspectorTab: 'settings',
       profileTarget: null,
       runPreview: null,
+      subflowLibraryVersion: 0,
       toast: null,
 
       setTheme: (theme) => set({ theme }),
@@ -58,6 +62,7 @@ export const useUiStore = create<UiState>()(
       setInspectorTab: (tab) => set({ inspectorTab: tab }),
       setProfileTarget: (target) => set({ profileTarget: target }),
       setRunPreview: (ids) => set({ runPreview: ids }),
+      bumpSubflowLibrary: () => set(s => ({ subflowLibraryVersion: s.subflowLibraryVersion + 1 })),
       showToast: (msg, type = 'info') => {
         const toast = { msg, type }
         set({ toast })

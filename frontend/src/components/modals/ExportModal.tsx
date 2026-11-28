@@ -1,4 +1,5 @@
 import { useUiStore } from '../../store/uiStore'
+import { innerNodes, isSubflow } from '../../lib/subflow'
 import { usePipelineStore } from '../../store/pipelineStore'
 import { api } from '../../lib/api'
 import { NODE_REGISTRY } from '../../registry/nodeRegistry'
@@ -13,7 +14,9 @@ export function ExportModal() {
   const { setShowExportModal, showToast } = useUiStore()
   const toPipelineSpec = usePipelineStore(s => s.toPipelineSpec)
   const nodes = usePipelineStore(s => s.nodes)
-  const notExportable = [...new Set(nodes.map(n => NODE_REGISTRY[n.type]).filter(s => s && !s.exportable).map(s => s!.label))]
+  // nodes inside subflows count too: they export as ordinary nodes
+  const types = nodes.flatMap(n => (isSubflow(n.type) ? innerNodes(n.id, n.config).map(i => i.type) : [n.type]))
+  const notExportable = [...new Set(types.map(t => NODE_REGISTRY[t]).filter(s => s && !s.exportable).map(s => s!.label))]
 
   const onExport = async (format: string) => {
     try {

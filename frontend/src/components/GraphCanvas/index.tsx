@@ -8,18 +8,19 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from '../../nodes'
-import { usePipelineStore, type PipelineNode, type PipelineEdge } from '../../store/pipelineStore'
+import { nextNodeId, usePipelineStore, type PipelineNode, type PipelineEdge } from '../../store/pipelineStore'
 import { useExecutionStore } from '../../store/executionStore'
 import { useUiStore } from '../../store/uiStore'
 import { NODE_REGISTRY, CATEGORY_META } from '../../registry/nodeRegistry'
-import { isValidConnection } from '../../lib/validation'
+import { portsCompatible } from '../../lib/validation'
+import { isSubflow, nodePorts, withFreshIds, type SubflowConfig } from '../../lib/subflow'
 import { autoLayout } from '../../lib/layout'
-import { Network } from 'lucide-react'
+import { Group, Network } from 'lucide-react'
 
 function toRfNode(n: PipelineNode): Node {
   return {
     id: n.id,
-    type: 'athena_node',
+    type: isSubflow(n.type) ? 'athena_subflow' : 'athena_node',
     position: n.position,
     data: { nodeType: n.type, config: n.config },
   }
@@ -53,17 +54,37 @@ export function GraphCanvas() {
   const showToast = useUiStore(s => s.showToast)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const applyLayout = usePipelineStore(s => s.applyLayout)
+  const groupNodes = usePipelineStore(s => s.groupNodes)
   const tidyToast = useUiStore(s => s.showToast)
   // Tidy layout: an explicit, undoable command (auto-layout never moves nodes on its own).
   const tidy = useCallback(() => {
     const { nodes, edges } = usePipelineStore.getState()
     if (nodes.length === 0) return
-    const ports = (type: string) => Math.max(NODE_REGISTRY[type]?.inputs.length ?? 1, NODE_REGISTRY[type]?.outputs.length ?? 1)
-    applyLayout(autoLayout(nodes.map(n => ({ id: n.id, ports: ports(n.type) })), edges))
+    const ports = (n: PipelineNode) => { const p = nodePorts(n.type, n.config); return Math.max(p.inputs.length, p.outputs.length, 1) + (isSubflow(n.type) ? 1 : 0) }
+    applyLayout(autoLayout(nodes.map(n => ({ id: n.id, ports: ports(n) })), edges))
     tidyToast('Arranged the nodes. Ctrl+Z to undo', 'info')
   }, [applyLayout, tidyToast])
 
+  // Group the canvas selection (Shift-click or drag a box) into one subflow node.
+  const groupSelected = useCallback(() => {
+    const ids = rfNodesRef.current.filter(n => n.selected).map(n => n.id)
+    const error = groupNodes(ids)
+    if (error) tidyToast(error, 'warn')
+    else tidyToast(`Grouped ${ids.length} nodes into a subflow. Ctrl+Z to undo`, 'info')
+  }, [groupNodes, tidyToast])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      if (el.closest('input, textarea, select, [contenteditable="true"], .cm-editor')) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') { e.preventDefault(); groupSelected() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [groupSelected])
+
   const [rfNodes, setRfNodes, onNodesChangeBase] = useNodesState<Node>(storeNodes.map(toRfNode))
+  const rfNodesRef = useRef(rfNodes)  // the canvas selection lives in React Flow's state
+  rfNodesRef.current = rfNodes
   const [rfEdges, setRfEdges, onEdgesChangeBase] = useEdgesState<Edge>(storeEdges.map(toRfEdge))
 
   const lastSyncedNodes = useRef<PipelineNode[]>(storeNodes)
@@ -161,9 +182,9 @@ export function GraphCanvas() {
     const srcPortIdx = conn.sourceHandle ? parseInt(conn.sourceHandle.replace('output-', ''), 10) : 0
     const tgtPortIdx = conn.targetHandle ? parseInt(conn.targetHandle.replace('input-', ''), 10) : 0
 
-    if (!isValidConnection(srcNode.type, srcPortIdx, tgtNode.type, tgtPortIdx)) {
-      const srcPort = NODE_REGISTRY[srcNode.type]?.outputs[srcPortIdx]
-      const tgtPort = NODE_REGISTRY[tgtNode.type]?.inputs[tgtPortIdx]
+    const srcPort = nodePorts(srcNode.type, srcNode.config).outputs[srcPortIdx]
+    const tgtPort = nodePorts(tgtNode.type, tgtNode.config).inputs[tgtPortIdx]
+    if (!srcPort || !tgtPort || !portsCompatible(srcPort.type, tgtPort.type)) {
       showToast(`Incompatible ports: "${srcPort?.type}" → "${tgtPort?.type}"`, 'error')
       return
     }
@@ -179,6 +200,13 @@ export function GraphCanvas() {
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
+    const saved = e.dataTransfer.getData('application/athena-subflow')
+    if (saved) {  // a subflow from the library: fresh inner ids, so ungrouping it never collides
+      const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY }, { snapToGrid: false })
+      const config = withFreshIds(JSON.parse(saved) as SubflowConfig, nextNodeId)
+      addNode('subflow', { x: Math.round(pos.x / 20) * 20, y: Math.round(pos.y / 20) * 20 }, config as unknown as Record<string, unknown>)
+      return
+    }
     const type = e.dataTransfer.getData('application/athena-node')
     if (!type) return
     // screenToFlowPosition converts absolute client coords → flow coords,
@@ -205,6 +233,7 @@ export function GraphCanvas() {
   }, [setSelectedNode, setSelectedEdge])
 
   const nodeColor = useCallback((node: Node) => {
+    if (isSubflow(node.data?.nodeType as string)) return 'var(--cat-subflow)'
     const spec = NODE_REGISTRY[node.data?.nodeType as string]
     if (!spec) return '#888'
     return CATEGORY_META[spec.category]?.color ?? '#888'
@@ -247,6 +276,9 @@ export function GraphCanvas() {
         <Controls>
           <ControlButton onClick={tidy} title="Tidy layout: arrange nodes left to right (Ctrl+Z undoes it)" aria-label="Tidy layout">
             <Network size={14} />
+          </ControlButton>
+          <ControlButton onClick={groupSelected} title="Group the selected nodes into a subflow (Ctrl+G)" aria-label="Group into subflow">
+            <Group size={14} />
           </ControlButton>
         </Controls>
         <MiniMap

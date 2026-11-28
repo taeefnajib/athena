@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { groupNodes as groupSubflow, ungroupNode as ungroupSubflow } from '../lib/subflow'
 import { NODE_REGISTRY } from '../registry/nodeRegistry'
 import { DEFAULT_META, pickPolicy, type NodePolicy, type PipelineMeta, type PipelineSpec, type NodeStatus } from '../types/pipeline'
 
@@ -146,6 +147,14 @@ export const TEMPLATES = {
 
 let nodeCounter = 100
 
+/** A new node id, never reused in this session (node ids are stable and never reused after deletion). */
+export function nextNodeId(): string { return `n_${++nodeCounter}` }
+
+/** Every node id in a pipeline, including the ones inside subflows (they come back when a subflow is ungrouped). */
+function allIds(nodes: Array<{ id: string; type: string; config: Record<string, unknown> }>): string[] {
+  return nodes.flatMap(n => [n.id, ...(n.type === 'subflow' ? allIds(((n.config.nodes ?? []) as typeof nodes)) : [])])
+}
+
 interface PipelineState {
   nodes: PipelineNode[]
   edges: PipelineEdge[]
@@ -161,6 +170,10 @@ interface PipelineState {
   updateNodeConfig: (id: string, config: Record<string, unknown>) => void
   updateNodePolicy: (id: string, policy: NodePolicy) => void
   moveNode: (id: string, position: { x: number; y: number }) => void
+  /** Group nodes into one subflow node (one undo step). Returns an error message, or null. */
+  groupNodes: (ids: string[], name?: string) => string | null
+  /** Put a subflow's nodes back on the canvas (one undo step). */
+  ungroupNode: (id: string) => void
   /** Move many nodes at once (Tidy layout) as one undo step. */
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void
   addEdge: (edge: PipelineEdge) => void
@@ -196,10 +209,10 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   addNode: (type, position, config) => {
     const spec = NODE_REGISTRY[type]
-    if (!spec) return
+    if (!spec && !(type === 'subflow' && config)) return  // subflows carry their own config (from the library)
     const defaultConfig: Record<string, unknown> = {}
-    spec.config.forEach(f => { defaultConfig[f.id] = f.default })
-    const newNode: PipelineNode = { id: `n_${++nodeCounter}`, type, position, config: config ?? defaultConfig, status: 'idle' }
+    spec?.config.forEach(f => { defaultConfig[f.id] = f.default })
+    const newNode: PipelineNode = { id: nextNodeId(), type, position, config: config ?? defaultConfig, status: 'idle' }
     set(s => {
       const nodes = [...s.nodes, newNode]
       return { nodes, isDirty: true, ...pushHistory(s, nodes, s.edges) }
@@ -224,6 +237,21 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   moveNode: (id, position) => {
     set(s => ({ nodes: s.nodes.map(n => n.id === id ? { ...n, position } : n), isDirty: true }))
+  },
+
+  groupNodes: (ids, name = 'Subflow') => {
+    const s = get()
+    const res = groupSubflow(s.nodes, s.edges, ids, nextNodeId(), name)
+    if ('error' in res) return res.error
+    set(st => ({ nodes: res.nodes, edges: res.edges, selectedNodeId: res.id, selectedEdgeId: null, isDirty: true, ...pushHistory(st, res.nodes, res.edges) }))
+    return null
+  },
+
+  ungroupNode: (id) => {
+    set(s => {
+      const res = ungroupSubflow(s.nodes, s.edges, id)
+      return { nodes: res.nodes, edges: res.edges, selectedNodeId: null, isDirty: true, ...pushHistory(s, res.nodes, res.edges) }
+    })
   },
 
   applyLayout: (positions) => {
@@ -260,8 +288,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   loadPipeline: (nodes, edges, meta) => {
     // Advance nodeCounter past any loaded node IDs so new drops never collide.
-    for (const n of nodes) {
-      const m = n.id.match(/^n_(\d+)$/)
+    for (const id of allIds(nodes)) {
+      const m = id.match(/^n_(\d+)$/)
       if (m) nodeCounter = Math.max(nodeCounter, parseInt(m[1], 10))
     }
     set(s => ({ nodes, edges, meta: meta ?? DEFAULT_META, selectedNodeId: null, selectedEdgeId: null, isDirty: false, fitViewGeneration: s.fitViewGeneration + 1, ...pushHistory(s, nodes, edges) }))
