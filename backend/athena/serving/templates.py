@@ -49,7 +49,7 @@ REQUEST_LOG: "Path | None" = None  # set by --log-requests
 
 @app.middleware("http")
 async def _measure(request: Request, call_next: Any) -> Any:
-    if request.url.path != "/predict":
+    if request.url.path != "/predict" and not request.url.path.endswith(":predict"):
         return await call_next(request)
     start = time.perf_counter()
     status = 500
@@ -204,6 +204,22 @@ def predict(req: PredictRequest) -> dict[str, Any]:
         proba = MODEL.predict_proba(df)
         out["probabilities"] = [{{str(c): float(p) for c, p in zip(classes, row)}} for row in proba]
     return out
+
+
+# KServe's V1 inference protocol, so the service runs as a KServe InferenceService and answers its clients:
+# POST /v1/models/<name>:predict with {{"instances": [{{feature: value, ...}}, ...]}} (or lists in feature order).
+@app.get("/v1/models/{{model_name}}")
+def model_ready(model_name: str) -> dict[str, Any]:
+    return {{"name": model_name, "ready": True}}
+
+
+@app.post("/v1/models/{{model_name}}:predict")
+def predict_v1(model_name: str, body: dict[str, Any]) -> dict[str, Any]:
+    instances = body.get("instances")
+    if not isinstance(instances, list):
+        raise HTTPException(422, 'Send {{"instances": [...]}}: one object (or list in feature order) per row')
+    rows = [dict(zip(FEATURES, row)) if isinstance(row, list) else row for row in instances]
+    return predict(PredictRequest(rows=rows))
 
 
 if __name__ == "__main__":

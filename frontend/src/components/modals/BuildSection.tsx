@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 export interface BuildStatus {
-  target: 'docker' | 'bento'; state: 'running' | 'succeeded' | 'failed' | 'cancelled'
+  target: 'docker' | 'bento' | 'push'; state: 'running' | 'succeeded' | 'failed' | 'cancelled'
   tag: string; started: number; finished: number | null; command: string; run_command: string; log: string[]
 }
 export interface BuildTool { available: boolean; command: string | null; hint: string | null }
@@ -18,8 +18,16 @@ const mono: React.CSSProperties = { fontFamily: 'var(--mono)', fontSize: 11.5 }
 /** The lines of a build's status, as plain data (tested). */
 export function buildSummary(b: BuildStatus | null | undefined): { tone: 'running' | 'ok' | 'bad' | 'none'; text: string } {
   if (!b) return { tone: 'none', text: 'Not built yet.' }
-  const what = b.target === 'docker' ? 'Docker image' : 'Bento'
   const took = b.finished ? ` in ${Math.max(1, Math.round(b.finished - b.started))} s` : ''
+  if (b.target === 'push') {
+    switch (b.state) {
+      case 'running': return { tone: 'running', text: `Pushing ${b.tag}…` }
+      case 'succeeded': return { tone: 'ok', text: `Pushed ${b.tag}${took}.` }
+      case 'cancelled': return { tone: 'bad', text: 'The push was cancelled.' }
+      default: return { tone: 'bad', text: `The push failed${took}: see the log (are you logged in to the registry?).` }
+    }
+  }
+  const what = b.target === 'docker' ? 'Docker image' : 'Bento'
   switch (b.state) {
     case 'running': return { tone: 'running', text: `Building the ${what}…` }
     case 'succeeded': return { tone: 'ok', text: `Built ${what}${b.tag ? ` ${b.tag}` : ''}${took}.` }
@@ -31,25 +39,37 @@ export function buildSummary(b: BuildStatus | null | undefined): { tone: 'runnin
 /** Build the bundle into a Docker image or a Bento with the user's own docker / bentoml, and show the log. */
 export function BuildSection({ slug, build, tools, onStart, onCancel }: {
   slug: string; build: BuildStatus | null | undefined; tools: BuildTools | null
-  onStart: (target: 'docker' | 'bento') => void; onCancel: () => void
+  onStart: (target: 'docker' | 'bento' | 'push', image?: string) => void; onCancel: () => void
 }) {
   const running = build?.state === 'running'
+  const [image, setImage] = useState(`${slug}:latest`)
+  useEffect(() => { setImage(build && build.target !== 'bento' && build.tag ? build.tag : `${slug}:latest`) }, [slug])  // eslint-disable-line react-hooks/exhaustive-deps
+  const built = build?.state === 'succeeded' && build.target !== 'bento' ? build.tag : ''
   const [showLog, setShowLog] = useState(false)
   useEffect(() => { if (running || build?.state === 'failed') setShowLog(true) }, [running, build?.state])
   const summary = buildSummary(build)
   const color = { running: 'var(--running)', ok: 'var(--success)', bad: 'var(--error)', none: 'var(--text-muted)' }[summary.tone]
   return (
     <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        <label htmlFor={`image-${slug}`} style={{ fontSize: 11.5, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>Image name</label>
+        <input id={`image-${slug}`} value={image} onChange={e => setImage(e.target.value)} spellCheck={false}
+               style={{ ...mono, flex: 1, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', color: 'var(--text)' }} />
+      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {TARGETS.map(t => {
           const tool = tools?.[t.id]
           return (
             <button key={t.id} style={{ ...btn, opacity: tool?.available && !running ? 1 : 0.55, cursor: tool?.available && !running ? 'pointer' : 'not-allowed' }} disabled={running || !tool?.available}
-                    title={tool?.available ? `Runs ${tool.command} in the bundle folder` : tool?.hint ?? ''} onClick={() => onStart(t.id)}>
+                    title={tool?.available ? `Runs ${tool.command} in the bundle folder` : tool?.hint ?? ''} onClick={() => onStart(t.id, t.id === 'docker' ? image.trim() : undefined)}>
               {t.label}
             </button>
           )
         })}
+        <button style={{ ...btn, opacity: built && !running ? 1 : 0.55, cursor: built && !running ? 'pointer' : 'not-allowed' }} disabled={!built || running}
+                title={built ? `docker push ${built} (log in to the registry first: docker login)` : 'Build the Docker image first'} onClick={() => onStart('push', built)}>
+          Push image
+        </button>
         {running && <button style={btn} onClick={onCancel}>Cancel build</button>}
         <span role="status" style={{ fontSize: 12, color }}>{summary.text}</span>
       </div>

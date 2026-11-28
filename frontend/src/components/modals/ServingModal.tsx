@@ -4,6 +4,7 @@ import { usePipelineStore } from '../../store/pipelineStore'
 import { useExecutionStore } from '../../store/executionStore'
 import { NODE_REGISTRY } from '../../registry/nodeRegistry'
 import { BuildSection, type BuildStatus, type BuildTools } from './BuildSection'
+import { KServeSection, type KServeRecord } from './KServeSection'
 
 interface Feature { name: string; kind: string; dtype: string; example: unknown }
 interface Bundle {
@@ -16,6 +17,7 @@ interface Bundle {
   endpoint: { running: boolean; url: string | null }
   monitoring: { logs_requests: boolean; requests_logged: number; request_log: string }
   build?: BuildStatus | null
+  kserve?: KServeRecord | null
 }
 
 const btn: React.CSSProperties = { fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', cursor: 'pointer' }
@@ -83,8 +85,8 @@ export function ServingModal() {
   const start = (slug: string) => act('start', async () => { await call(`/api/serving/endpoints/${slug}`, { method: 'POST' }); await refresh(slug) })
   const stop = (slug: string) => act('stop', async () => { await call(`/api/serving/endpoints/${slug}`, { method: 'DELETE' }); await refresh(slug) })
   const remove = (slug: string) => act('delete', async () => { await call(`/api/serving/bundles/${slug}`, { method: 'DELETE' }); setSelected(null); await refresh() })
-  const startBuild = (slug: string, target: string) => act('build', async () => {
-    await call(`/api/serving/bundles/${slug}/build`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target }) })
+  const startBuild = (slug: string, target: string, image?: string) => act('build', async () => {
+    await call(`/api/serving/bundles/${slug}/build`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, image: image ?? '' }) })
     await refresh(slug)
   })
   const cancelBuild = (slug: string) => act('build', async () => { await call(`/api/serving/bundles/${slug}/build`, { method: 'DELETE' }); await refresh(slug) })
@@ -237,7 +239,11 @@ export function ServingModal() {
                 </div>
                 <div style={label}>Build</div>
                 <BuildSection slug={current.slug} build={current.build} tools={tools}
-                              onStart={target => startBuild(current.slug, target)} onCancel={() => cancelBuild(current.slug)} />
+                              onStart={(target, image) => startBuild(current.slug, target, image)} onCancel={() => cancelBuild(current.slug)} />
+                <div style={label}>Kubernetes (KServe)</div>
+                <KServeSection key={current.slug} slug={current.slug} record={current.kserve}
+                               lastImage={current.build?.state === 'succeeded' && current.build.target !== 'bento' ? current.build.tag : ''}
+                               onError={m => showToast(m, 'error')} />
                 <div style={label}>Run it elsewhere</div>
                 <pre style={{ ...mono, margin: 0, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-dim)', padding: 10, whiteSpace: 'pre-wrap' }}>
 {`# from the unzipped folder (${current.slug}/), no Athena needed

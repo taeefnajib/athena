@@ -19,8 +19,9 @@ from typing import Any, Literal
 
 from athena.serving.bundle import bundle_path
 
-Target = Literal["docker", "bento"]
-TARGETS: tuple[Target, ...] = ("docker", "bento")
+Target = Literal["docker", "bento", "push"]
+TARGETS: tuple[Target, ...] = ("docker", "bento", "push")
+IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$")  # an image reference; never starts with "-"
 LOG_TAIL = 80
 # Tests point a tool at a stand-in command; None means "not installed".
 TOOL_OVERRIDES: dict[str, list[str] | None] = {}
@@ -51,7 +52,7 @@ _BUILDS: dict[str, Build] = {}
 
 
 def _tool(target: Target) -> list[str] | None:
-    name = "docker" if target == "docker" else "bentoml"
+    name = "bentoml" if target == "bento" else "docker"
     if name in TOOL_OVERRIDES:
         return TOOL_OVERRIDES[name]
     found = shutil.which(name)
@@ -67,39 +68,58 @@ def tools() -> dict[str, dict[str, Any]]:
     hints = {"docker": "Install Docker Desktop (or Docker Engine) and make sure `docker` is on your PATH.",
              "bento": "Install BentoML in Athena's environment: `uv pip install bentoml`."}
     out = {}
-    for target in TARGETS:
+    for target in ("docker", "bento"):
         cmd = _tool(target)
         out[target] = {"available": cmd is not None, "command": " ".join(cmd) if cmd else None, "hint": None if cmd else hints[target]}
     return out
 
 
-def _command(target: Target, tool: list[str], slug: str) -> tuple[list[str], str]:
+def _command(target: Target, tool: list[str], slug: str, image: str) -> tuple[list[str], str]:
     if target == "docker":
-        tag = f"{slug}:latest"
+        tag = image or f"{slug}:latest"
         return [*tool, "build", "-t", tag, "."], tag
+    if target == "push":
+        return [*tool, "push", image], image
     return [*tool, "build", "-f", "bentofile.yaml", "."], ""  # BentoML names the Bento itself; read from the log
+
+
+def last_image(slug: str) -> str:
+    """The image of the bundle's last successful Docker build or push ("" if none)."""
+    saved = bundle_path(slug) / "build.json"
+    if not saved.exists():
+        return ""
+    record = json.loads(saved.read_text(encoding="utf-8"))
+    return str(record.get("tag", "")) if record.get("state") == "succeeded" and record.get("target") in ("docker", "push") else ""
 
 
 def run_command(target: str, tag: str) -> str:
     if not tag:
         return ""
-    return f"docker run --rm -p 8000:8000 {tag}" if target == "docker" else f"bentoml serve {tag}"
+    return f"bentoml serve {tag}" if target == "bento" else f"docker run --rm -p 8000:8000 {tag}"
 
 
-def start(slug: str, target: str) -> dict[str, Any]:
+def start(slug: str, target: str, image: str = "") -> dict[str, Any]:
+    """Build a Docker image (named ``image``, default ``<slug>:latest``), build a Bento, or push an image."""
     if target not in TARGETS:
         raise BuildError(f"Unknown build target {target!r}: use one of {', '.join(TARGETS)}")
-    kind: Target = "docker" if target == "docker" else "bento"
+    kind: Target = "docker" if target == "docker" else "push" if target == "push" else "bento"
+    image = image.strip()
+    if kind == "push" and not image:
+        image = last_image(slug)
+        if not image:
+            raise BuildError("Build the Docker image first (with your registry in its name, e.g. ghcr.io/you/model:1)")
+    if image and not IMAGE_RE.match(image):
+        raise BuildError(f"{image!r} isn't a valid image name (e.g. ghcr.io/you/churn-model:1)")
     path = bundle_path(slug)
     current = _BUILDS.get(path.name)
     if current and current.process.poll() is None:
         raise BuildBusy(f"A {current.target} build of {path.name} is already running")
     tool = _tool(kind)
     if tool is None:
-        raise BuildError(tools()[target]["hint"])
+        raise BuildError(tools()["bento" if kind == "bento" else "docker"]["hint"])
     if target == "bento" and not (path / "bentofile.yaml").exists():
         raise BuildError("This bundle has no bentofile.yaml (it was made by an older Athena): deploy the model again")
-    cmd, tag = _command(kind, tool, path.name)
+    cmd, tag = _command(kind, tool, path.name, image)
     log = open(path / "build.log", "wb")  # noqa: SIM115 - handed to the child, closed when it ends
     log.write(f"$ {' '.join(cmd)}\n".encode())
     log.flush()
