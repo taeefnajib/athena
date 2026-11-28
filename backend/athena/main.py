@@ -16,6 +16,7 @@ from athena.api.files import router as files_router
 from athena.api.connections import router as connections_router
 from athena.api.tracking import router as tracking_router
 from athena.api.subflows import router as subflows_router
+from athena.api.serving import router as serving_router
 from athena.core.executor import pool, reset_active_run
 
 # Register built-in nodes/connectors and installed plugins
@@ -36,6 +37,8 @@ async def lifespan(app: FastAPI):
     pool.prewarm()  # first run shouldn't wait for the worker's imports
     yield
     pool.shutdown()
+    from athena.serving import endpoints
+    endpoints.stop_all()  # local prediction endpoints end with Athena
     clear_cache(settings.data_dir / "cache", keep_store=settings.keep_cache)
 
 
@@ -70,6 +73,7 @@ app.include_router(ws_router)
 app.include_router(files_router)
 app.include_router(connections_router)
 app.include_router(subflows_router)
+app.include_router(serving_router)
 app.include_router(tracking_router)
 
 

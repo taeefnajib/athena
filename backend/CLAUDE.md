@@ -321,6 +321,12 @@ Rules:
 - `core/subflows.py`: `SubflowConfig` (inner `nodes`/`edges`, `inputs`/`outputs` mapping to inner ports) and `expand(spec, start_from)`, which replaces each subflow by its inner nodes (`<subflow>.<inner>`, nested ones too, up to 8 levels) and rewires boundary edges. It runs in the run endpoint (before the cycle check), in `run_spec` (a no-op when already expanded) and in `codegen.build_sections`; nothing downstream knows subflows exist.
 - `storage/subflows.py`: the library in `<data_dir>/subflows/<slug>.json` (validated on save; a broken file is skipped in listings).
 
+### Serving
+
+- `serving/bundle.py`: `bundle_from_run(name, spec, run_id, node_id, port)` loads the model from the run (`core/artifacts.py`), finds its training features by following model inputs back to an `X_train` input (`training_source`), lists upstream preprocessing nodes (categories quality/feature/balance) that the served model does not replay, and writes `<data_dir>/models/<slug>/`. Requirements come from the modules the model's pickle actually references (a recording `Unpickler`), mapped to installed distributions and pinned; `needs_athena` flags models pickled with Athena's own classes. Example values are medians / modes, never real rows.
+- `serving/templates.py`: the standalone `service.py` (FastAPI), BentoML service, bentofile, Dockerfile and README. Keep them free of Athena imports.
+- `serving/endpoints.py`: each endpoint is `python service.py --exit-with-parent` in its own process on a free 127.0.0.1 port (user models never load in the API process). Its stdin is a pipe Athena holds, so the service exits when Athena does, even after a crash; `stop_all()` runs at shutdown too. API: `api/serving.py` (`/api/serving/bundles`, `/api/serving/endpoints/{slug}`, `.../predict` for the test console).
+
 ### Run outputs and profiling
 
 - The worker pickles every node's result into the run's cache folder (`<data_dir>/cache/<run_id>/`) and records `node_id -> cache key` in `index.json`, whether or not `node.cache` is on (that flag only decides whether a cached result is *reused*). `core/artifacts.py: load_output()` reads them back in the API process; it deserialises results, never runs handlers.

@@ -155,6 +155,8 @@ Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**, **Code** 
 
 **Compare versions** (`lib/diff.ts`, pure and unit-tested): `diffSpecs(saved, current)` matches nodes by id (ids are never reused) and reports added / removed / changed nodes with field-level before → after (config labels from the registry, policy fields, subflows summarised recursively), moves, connection changes and pipeline settings. `modals/CompareModal.tsx` loads a saved version through the backend; `uiStore.diffMarks` tags nodes on the canvas until cleared.
 
+**Serving** (`modals/ServingModal.tsx`): Deploy in a model output's actions (`RightSidebar/OutputActions.tsx`) sets `uiStore.deployTarget` and opens the modal, which packages the model through `/api/serving/bundles`, starts / stops local endpoints, and has a test console that calls the endpoint through the backend (no CORS, no direct port access). It always shows the backend's `preprocessing_not_included` warning.
+
 **Tidy layout** (canvas controls) runs `autoLayout` (dagre, left to right) and applies it with `applyLayout` as one undo step that first records the current positions, so Ctrl+Z restores them exactly. It only ever runs on that explicit command.
 
 - **Settings**: render a form derived from `node.config` schema. Each `ConfigField.type` maps to a component in `components/ui/`. Update the store on `onChange` for toggles/selects, on `onBlur` for text/textarea (avoid spamming history during typing). Validation: numbers must be numbers; required fields highlighted on save.

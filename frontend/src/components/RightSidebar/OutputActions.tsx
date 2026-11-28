@@ -16,6 +16,7 @@ export function OutputActions({ nodeId, nodeType }: { nodeId: string; nodeType: 
   const runId = useExecutionStore(s => s.runId)
   const status = useExecutionStore(s => s.nodeStates[nodeId]?.status)
   const setProfileTarget = useUiStore(s => s.setProfileTarget)
+  const setDeployTarget = useUiStore(s => s.setDeployTarget)
   const outputs = (NODE_REGISTRY[nodeType]?.outputs ?? []).map((p, i) => ({ ...p, i })).filter(p => DOWNLOADABLE.has(p.type))
   if (!runId || status !== 'success' || outputs.length === 0) return null
   return (
@@ -25,6 +26,9 @@ export function OutputActions({ nodeId, nodeType }: { nodeId: string; nodeType: 
           <span style={{ fontSize: 11, color: 'var(--text-dim)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
           {TABLE_PORT_TYPES.has(p.type) && (
             <button style={btn} onClick={() => setProfileTarget({ nodeId, port: p.i })} title="Statistics, data-quality findings and target association">Profile</button>
+          )}
+          {(p.type === 'model' || p.type === 'pipeline') && (
+            <button style={btn} onClick={() => setDeployTarget({ nodeId, port: p.i })} title="Package it as a prediction service (local endpoint, Docker, BentoML)">Deploy</button>
           )}
           <a style={btn} href={artifactUrl(runId, nodeId, p.i)} download title={TABLE_PORT_TYPES.has(p.type) ? 'Download as CSV' : 'Download'}>↓</a>
         </div>

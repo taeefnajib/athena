@@ -495,7 +495,7 @@ class PredPrintHandler:
         "framework": ui(widget="select", options=["FastAPI", "Flask"]),
     },
     export_note="Not implemented yet.",
-    available=False, unavailable_reason="Not implemented yet: model serving via BentoML is roadmap phase 2.",
+    available=False, unavailable_reason="Replaced by Deploy: after a run, open a model's Data Preview and choose Deploy.",
 )
 class ApiGenHandler:
     class Config(BaseModel):
