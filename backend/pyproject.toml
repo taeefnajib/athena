@@ -29,6 +29,9 @@ dependencies = [
     "lightgbm>=4.3.0",
 ]
 
+[project.scripts]
+athena-runner = "athena.runner.__main__:main"  # serve a machine as a runner (runtime "runner:<connection>")
+
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2.0"]
 mysql = ["pymysql>=1.1.0"]

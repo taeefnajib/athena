@@ -28,15 +28,19 @@ class RemoteNodeError(Exception):
 class CapturingLogger:
     """The NodeLogger interface, recording (level, message) to replay in the worker."""
 
-    def __init__(self, lines: list[tuple[str, str]], context: dict[str, Any] | None = None) -> None:
-        self._lines, self._ctx = lines, dict(context or {})
+    def __init__(self, lines: list[tuple[str, str]], context: dict[str, Any] | None = None,
+                 sink: Callable[[str, str], None] | None = None) -> None:
+        self._lines, self._ctx, self._sink = lines, dict(context or {}), sink
 
     def bind(self, **kw: Any) -> CapturingLogger:
-        return CapturingLogger(self._lines, {**self._ctx, **kw})
+        return CapturingLogger(self._lines, {**self._ctx, **kw}, self._sink)
 
     def _log(self, level: str, event: str, kw: dict[str, Any]) -> None:
         detail = " ".join(f"{k}={v}" for k, v in {**self._ctx, **kw}.items())
-        self._lines.append((level, f"{event} {detail}".strip()))
+        line = (level, f"{event} {detail}".strip())
+        self._lines.append(line)
+        if self._sink is not None:  # as it happens (a runner streams these to the worker)
+            self._sink(*line)
 
     def debug(self, event: str, **kw: Any) -> None: self._log("debug", event, kw)
     def info(self, event: str, **kw: Any) -> None: self._log("info", event, kw)
@@ -47,14 +51,17 @@ class CapturingLogger:
 
 
 def execute(node_type: str, config: dict[str, Any], inputs: list[Any], run_id: str, node_id: str, cache_dir: str,
-            where: str, around: Callable[[], AbstractContextManager[Any]] = nullcontext) -> Outcome:
-    """Run one handler here. ``around`` wraps the call (e.g. joblib's Ray backend)."""
+            where: str, around: Callable[[], AbstractContextManager[Any]] = nullcontext,
+            sink: Callable[[str, str], None] | None = None) -> Outcome:
+    """Run one handler here. ``around`` wraps the call (e.g. joblib's Ray backend); ``sink`` receives each log line."""
     from athena.plugins import load_plugins
     load_plugins()
     from athena.core.registry import get_handler
-    lines: list[tuple[str, str]] = [("info", f"Running on {where}")]
+    lines: list[tuple[str, str]] = []
+    logger = CapturingLogger(lines, sink=sink)
+    logger.info(f"Running on {where}")
     ctx = ExecutionContext(node_id=node_id, node_type=node_type, config=config, inputs=inputs, run_id=run_id,
-                           cache_dir=Path(cache_dir), logger=CapturingLogger(lines),  # type: ignore[arg-type]
+                           cache_dir=Path(cache_dir), logger=logger,  # type: ignore[arg-type]
                            _cancelled=lambda: False)
     try:
         with around():
@@ -63,10 +70,11 @@ def execute(node_type: str, config: dict[str, Any], inputs: list[Any], run_id: s
         return None, lines, (str(exc) or type(exc).__name__, traceback.format_exc())
 
 
-def finish(ctx: ExecutionContext, outcome: Outcome) -> HandlerResult:
-    """In the worker: replay the remote log lines, then return the result or raise the remote error."""
+def finish(ctx: ExecutionContext, outcome: Outcome, already_shown: int = 0) -> HandlerResult:
+    """In the worker: replay the remote log lines (after the first ``already_shown``, streamed earlier), then return
+    the result or raise the remote error."""
     result, lines, error = outcome
-    for level, msg in lines:
+    for level, msg in lines[already_shown:]:
         getattr(ctx.logger, level)(msg)
     if error is not None:
         raise RemoteNodeError(*error)

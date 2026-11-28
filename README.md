@@ -353,6 +353,12 @@ Each node's inspector has an **Execution** section: a timeout, retries with back
 - For a remote cluster, add a **Ray cluster** connection (Connections → ＋ Ray cluster) with its address (`ray://head:10001`), then choose it in **Runs on**. Athena can send its own code with each task; the cluster needs the ML libraries the node uses (the connection's *Extra pip packages* can install them).
 - Install with `uv pip install 'athena-backend[ray]'`. Results are cached the same way wherever a node ran, logs arrive when a Ray node finishes, and the exported script always runs locally.
 
+**Another machine (a runner):** to run nodes on a GPU box or a server next to the data, install Athena there and start `athena-runner`. It listens on 127.0.0.1:8765 and prints a token. Then add an **Athena runner** connection with its URL and token, and choose it in **Runs on**.
+
+- **Reaching it:** the simplest safe way is an SSH tunnel: `ssh -L 8765:127.0.0.1:8765 you@gpu-box`, then use `http://127.0.0.1:8765` as the URL. To serve it on a network, give it a token you choose (`ATHENA_RUNNER_TOKEN`) and TLS (`--ssl-certfile/--ssl-keyfile`). Whoever has the token can run code on that machine.
+- **While it runs:** the node's logs stream into the inspector, Stop cancels it on the runner, and `--max-jobs` sets how many nodes it runs at once (the rest wait).
+- **File paths** in a node that runs on a runner are that machine's paths (handy for data that lives there). Inputs from earlier nodes are sent along with it.
+
 **Kubernetes:** add a **Kubernetes cluster** connection and choose it in **Runs on** to run a node as a Kubernetes Job. Install the client with `uv pip install 'athena-backend[k8s]'`.
 
 - **Cluster access** comes from your kubeconfig (a context in it), or the service account when Athena runs inside the cluster. Nothing secret is stored in the connection.
