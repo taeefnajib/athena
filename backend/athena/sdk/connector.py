@@ -34,6 +34,7 @@ CONNECTOR_CATEGORIES = {
     "tracking": "Experiment tracking",
     "model_provider": "Model providers",
     "vector_store": "Vector stores",
+    "compute": "Compute",
 }
 
 

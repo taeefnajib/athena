@@ -347,6 +347,13 @@ Install the extra once: `cd backend && uv sync --extra automl` (FLAML with Light
 
 Each node's inspector has an **Execution** section: a timeout, retries with backoff, and whether to reuse cached results. Every pipeline runs in a separate worker process, so a crashing or hung node can't take the app down, and **Stop** always works.
 
+**Runs on** picks where a node runs: the local worker (default) or **Ray**. With Ray, the node runs as a Ray task with the CPUs, memory and GPUs you set reserved for it, and joblib work inside it (forests, grid and random search, cross-validation with `n_jobs`) spreads over the cluster.
+
+- **Ray (local cluster)** starts a Ray cluster on this machine for the run (a few seconds), handy to use a GPU or more cores without changing anything else.
+- For a remote cluster, add a **Ray cluster** connection (Connections → ＋ Ray cluster) with its address (`ray://head:10001`), then choose it in **Runs on**. Athena can send its own code with each task; the cluster needs the ML libraries the node uses (the connection's *Extra pip packages* can install them).
+- Install with `uv pip install 'athena-backend[ray]'`. Results are cached the same way wherever a node ran, logs arrive when a Ray node finishes, and the exported script always runs locally.
+
+
 ### Plugins
 
 Nodes and connectors can come from separately installed Python packages. See [`docs/PLUGINS.md`](docs/PLUGINS.md); `GET /api/plugins` lists what's installed.

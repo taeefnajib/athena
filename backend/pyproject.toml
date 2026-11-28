@@ -44,6 +44,7 @@ optuna = ["optuna>=4.0"]
 api = ["dlt[duckdb]>=1.5.0"]
 stats = ["statsmodels>=0.14.2"]
 monitoring = ["evidently>=0.7"]
+ray = ["ray[client]>=2.40"]  # run nodes on a Ray cluster (runtime "ray")
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",

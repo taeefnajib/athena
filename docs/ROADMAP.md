@@ -59,7 +59,7 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 
 ## Phase 3: Scale and the connector ecosystem
 
-- Execution adapters: Ray (distributed training and tuning), Kubernetes Jobs, remote runners; KServe deployments.
+- Execution adapters: ✅ Ray (2026-11-29): a node's runtime (`ray`, `ray:<connection>`) runs it as a Ray task with its resources reserved, joblib work spreading over the cluster; Ray cluster connections. Next: Kubernetes Jobs, remote runners; KServe deployments.
 - Deep learning nodes: PyTorch, Hugging Face Transformers (fine-tuning, embeddings), ONNX export.
 - GenAI: LLM provider connectors (OpenAI, Anthropic, Gemini, Bedrock, Azure OpenAI, Mistral, Ollama, vLLM) with token and cost tracking; RAG building blocks; vector stores (Qdrant, Chroma, pgvector, Milvus, Pinecone); LLM evaluation (groundedness, relevance).
 - Warehouses and SaaS: Snowflake, BigQuery, Databricks, Redshift; Airbyte connectors; Feast feature store.
