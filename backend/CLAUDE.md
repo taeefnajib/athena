@@ -45,7 +45,7 @@ backend/athena/
 │   ├── __init__.py
 │   ├── pipelines.py          # POST /run, /save, /load, /export, /code (per-node code view), /autosave
 │   ├── subflows.py           # GET/PUT /api/subflows, DELETE /api/subflows/{name} (the subflow library)
-│   ├── runs.py               # GET /runs/{id}, POST /runs/{id}/cancel, GET artifacts
+│   ├── runs.py               # GET /runs/{id}, POST /runs/{id}/cancel, GET artifacts, profiles and documents (HTML reports)
 │   ├── ws.py                 # WS /ws/runs/{id} — per-run event stream
 │   └── nodes.py              # GET /nodes — registry metadata for the frontend (debug aid)
 │
@@ -72,7 +72,9 @@ backend/athena/
 │   ├── eval.py               # metrics/conf_matrix/roc/feat_imp_viz/residual
 │   ├── interp.py             # shap/lime/debugger
 │   ├── deploy.py             # predict/api_gen/csv_export/model_saver/report_gen
-│   └── monitor.py            # drift/perf
+│   ├── monitor.py            # drift/perf (built-in KS/PSI)
+│   ├── drift.py              # Evidently: data drift, prediction drift, data quality
+│   └── traffic.py            # Endpoint Requests (a local endpoint's request log)
 │
 ├── schemas/
 │   ├── __init__.py
@@ -329,6 +331,21 @@ Rules:
 - `serving/chain.py`: walks upstream from the training input to the data source collecting `HandlerResult.replay` steps (splits drop the target; `skip` steps are training-only; the first node without a step, or with several data inputs, cuts the chain), ends with the model's feature order, then verifies: replayed on the raw training rows the chain must reproduce the split's `X_train` exactly, otherwise it falls back to model-ready features and says why. Requirements come from the modules the model's pickle actually references (a recording `Unpickler`), mapped to installed distributions and pinned; `needs_athena` flags models pickled with Athena's own classes. Example values are medians / modes, never real rows.
 - `serving/templates.py`: the standalone `service.py` (FastAPI), BentoML service, bentofile, Dockerfile and README. Keep them free of Athena imports.
 - `serving/endpoints.py`: each endpoint is `python service.py --exit-with-parent` in its own process on a free 127.0.0.1 port (user models never load in the API process). Its stdin is a pipe Athena holds, so the service exits when Athena does, even after a crash; `stop_all()` runs at shutdown too. API: `api/serving.py` (`/api/serving/bundles`, `/api/serving/endpoints/{slug}`, `.../predict` for the test console).
+
+### Quality gates, fairness, model cards
+
+- `nodes/gates.py`: `quality_gate` (inputs: up to three reports and an optional model; outputs: the model, passed through, and a report) and `fairness_check`. `_athena_check_rules` / `_athena_fairness` are self-contained and copied into exports. A failing gate with `on_fail="stop"` raises, so the engine halts everything downstream of it: that is the enforcement.
+- `serving/card.py`: `gather_evidence` collects, from the run, the reports of nodes that consumed the deployed model and the Quality Gates that checked it (a gate without a saved result failed or didn't run: reported as `passed: null`, never as a pass); `model_card` writes `MODEL_CARD.md`.
+- Workers and the API server write UTF-8 (`utils/tracing.utf8_output`): a legacy Windows code page would otherwise turn a log line containing ✓ or "São Paulo" into a node crash.
+
+### Monitoring (Evidently)
+
+- `nodes/drift.py` (extra `athena-backend[monitoring]`; Evidently is imported only when a node runs): `evidently_drift`, `prediction_drift`, `data_quality`. Each returns a report (numbers for Quality Gates), a per-column table and `HandlerResult.documents={"report.html": ...}`. The helpers `_athena_evidently_drift` / `_athena_prediction_drift` / `_athena_data_quality` are self-contained and copied into exports.
+- Per-column drift comes from Evidently's own tests (`include_tests=True`, status FAIL), never from comparing scores ourselves: p-value tests drift *below* their threshold, distances *above* it. Numeric-only tests (Wasserstein, K-S…) go in `num_method`, categorical ones in `cat_method`: Evidently refuses a numeric test on a categorical column.
+- `missing_share` is missing cells / all cells. Evidently's dataset "share" divides by rows (it can pass 1), so it isn't used.
+- **Documents:** `HandlerResult.documents` (name -> HTML) is cached with the result; `node_finish.documents` lists the names; `GET /api/runs/{run}/documents/{node}/{name}` serves one with `Content-Security-Policy: sandbox allow-scripts` (Evidently's charts run, in an opaque origin that can't call the API). The MLflow observer logs them as `athena/reports/<node>/<name>`. Results cached before the field existed lack it: read it with `getattr(result, "documents", None)`.
+- **Endpoints:** `service.py` keeps in-process counters and serves `/metrics` (Prometheus text format, no dependency); with `--log-requests FILE` it appends each predicted row (features after type coercion, before preprocessing; `prediction`; `timestamp`) as JSON Lines and rotates to `*.1.jsonl` at 50 MB. Logging never fails a prediction. `serving/endpoints.py` passes `--log-requests <bundle>/logs/requests.jsonl` only to services that support it (bundles made earlier don't); `GET /api/serving/endpoints/{slug}/metrics` proxies the metrics, and bundle listings carry `monitoring: {logs_requests, requests_logged, request_log}`.
+- `nodes/traffic.py`: `endpoint_requests` (`reusable=False`) reads a bundle's log by model name through `_athena_endpoint_requests` (rotated file first; a half-written last line is skipped).
 
 ### Run outputs and profiling
 

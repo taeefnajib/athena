@@ -180,6 +180,7 @@ When adding a new node type:
    - `{ "type": "node_log",     "node_id": "n1", "level": "info", "msg": "..." }` (zero or more)
    - `{ "type": "node_finish",  "node_id": "n1", "status": "success", "preview": {...}, "metrics": {...}, "duration_ms": 1234, "cached": false }`
      - `cached: true` means the result was reused from an earlier run instead of recomputed.
+     - `documents: ["report.html"]` (optional, default `[]`) names full HTML reports the node produced (Evidently's, for the monitoring nodes), too large for a preview. They're fetched with `GET /api/runs/{run_id}/documents/{node_id}/{name}` (served sandboxed; `?download=1` for a file).
      - or `{ "type": "node_finish", "node_id": "n1", "status": "error", "error": { "message": "...", "traceback": "..." } }`
 4. After the last node: `{ "type": "run_finish", "status": "completed" | "error" }`.
    - At any point, observers may send `{ "type": "run_info", "tracking": {...} | null, "message": "..." | null, "warning": "..." | null }`. When the pipeline is tracked, the first one carries the MLflow run (`run_id`, `experiment`, `experiment_id`, `destination`, `url`). Warnings mean tracking had a problem; they never fail the run.

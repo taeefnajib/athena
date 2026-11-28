@@ -1,9 +1,10 @@
-"""Model serving: bundles (build, list, download, delete) and local endpoints (start, stop, test)."""
+"""Model serving: bundles (build, list, download, delete) and local endpoints (start, stop, test, metrics)."""
+from pathlib import Path
 from typing import Any
 
 import anyio
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel
 
 from athena.core.artifacts import ArtifactNotFound
@@ -34,7 +35,15 @@ def _bad(exc: Exception, code: str, status: int = 400) -> HTTPException:
 
 @router.get("/bundles")
 async def bundles() -> dict[str, Any]:
-    items = await anyio.to_thread.run_sync(list_bundles)
+    def build() -> list[dict[str, Any]]:
+        out = []
+        for b in list_bundles():
+            path = Path(b["path"])
+            logs = "--log-requests" in (path / "service.py").read_text(encoding="utf-8")
+            out.append({**b, "monitoring": {"logs_requests": logs, "requests_logged": endpoints.logged_requests(path),
+                                            "request_log": str(endpoints.request_log(path))}})
+        return out
+    items = await anyio.to_thread.run_sync(build)
     live = endpoints.running()
     return {"bundles": [{**b, "endpoint": live.get(b["slug"], {"running": False, "url": None})} for b in items]}
 
@@ -84,6 +93,15 @@ async def start(slug: str) -> dict[str, Any]:
 async def stop(slug: str) -> dict[str, bool]:
     await anyio.to_thread.run_sync(lambda: endpoints.stop(slug))
     return {"ok": True}
+
+
+@router.get("/endpoints/{slug}/metrics", response_class=PlainTextResponse)
+async def metrics(slug: str) -> str:
+    """The running endpoint's Prometheus metrics (what a Prometheus server would scrape from its /metrics)."""
+    try:
+        return await anyio.to_thread.run_sync(lambda: endpoints.metrics(slug))
+    except RuntimeError as exc:
+        raise _bad(exc, "ENDPOINT_NOT_RUNNING", 409) from exc
 
 
 @router.post("/endpoints/{slug}/predict")

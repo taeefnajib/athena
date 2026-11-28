@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from athena.serving.bundle import bundle_path
@@ -64,8 +65,10 @@ def start(slug: str) -> dict[str, Any]:
     port = _free_port()
     log = open(path / "endpoint.log", "wb")  # noqa: SIM115 - kept open for the child's lifetime
     # stdin stays open for the child's lifetime: if Athena dies, the pipe closes and the service exits too
-    proc = subprocess.Popen([sys.executable, "service.py", "--host", "127.0.0.1", "--port", str(port), "--exit-with-parent"],
-                            cwd=path, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
+    cmd = [sys.executable, "service.py", "--host", "127.0.0.1", "--port", str(port), "--exit-with-parent"]
+    if "--log-requests" in (path / "service.py").read_text(encoding="utf-8"):  # bundles made before monitoring can't
+        cmd += ["--log-requests", str(request_log(path))]
+    proc = subprocess.Popen(cmd, cwd=path, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT)
     ep = Endpoint(path.name, port, proc)
     deadline = time.time() + START_TIMEOUT_S
     while time.time() < deadline:
@@ -83,6 +86,20 @@ def start(slug: str) -> dict[str, Any]:
         time.sleep(0.3)
     proc.kill()
     raise RuntimeError(f"The service didn't answer within {START_TIMEOUT_S} s (see {path / 'endpoint.log'})")
+
+
+def request_log(path: Path) -> Path:
+    """Where a local endpoint logs its requests (the Endpoint Requests node reads it)."""
+    return path / "logs" / "requests.jsonl"
+
+
+def logged_requests(path: Path) -> int:
+    total = 0
+    for f in (request_log(path).with_suffix(".1.jsonl"), request_log(path)):
+        if f.exists():
+            with f.open("rb") as fh:
+                total += sum(chunk.count(b"\n") for chunk in iter(lambda: fh.read(1 << 20), b""))
+    return total
 
 
 def stop(slug: str) -> None:
@@ -106,7 +123,16 @@ def status(slug: str) -> dict[str, Any]:
         _ENDPOINTS.pop(slug, None)
         ep = None
     return {"running": ep is not None, "url": ep.url if ep else None, "port": ep.port if ep else None,
-            "started": ep.started if ep else None}
+            "started": ep.started if ep else None, "metrics_url": f"{ep.url}/metrics" if ep else None}
+
+
+def metrics(slug: str) -> str:
+    """The running endpoint's Prometheus metrics, fetched for the Serving window."""
+    ep = _ENDPOINTS.get(slug)
+    if not ep or not ep.alive():
+        raise RuntimeError("This endpoint isn't running: start it first")
+    with urllib.request.urlopen(f"{ep.url}/metrics", timeout=10) as r:
+        return str(r.read().decode("utf-8"))
 
 
 def running() -> dict[str, dict[str, Any]]:

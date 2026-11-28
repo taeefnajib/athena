@@ -53,8 +53,8 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 ## Phase 2: Production MLOps
 
 - Packaging and serving: ✅ (2026-11-28) Deploy any trained model from a run as a standalone bundle (FastAPI service, pinned requirements, Dockerfile, BentoML service and bentofile, example request); run it as a local endpoint (its own process, 127.0.0.1, stops with Athena) with a test console. ✅ Serving replays the preprocessing (2026-11-28): preprocessing nodes record what they learned (`HandlerResult.replay`), the bundle chains those steps from the data source to the model and verifies they reproduce the training features exactly, so endpoints take raw rows. Next: replay the remaining nodes (Outlier clip/flag, String Splitter, Feature Importance Selection, merges); build Docker images and bentos from the UI; batch inference workflows.
-- Quality gates: acceptance criteria nodes ("deploy only if F1 ≥ 0.9 and no drift"), fairness checks, model cards.
-- Monitoring: Evidently reports (data drift, prediction drift, data quality); Prometheus metrics for local endpoints; retraining workflows triggered by drift.
+- Quality gates: ✅ (2026-11-28) Quality Gate node (rules against connected reports; stops the run or warns), Fairness Check node (per-group rates, parity and impact metrics), model cards in deployed bundles with the run's evaluation and gate results.
+- Monitoring: ✅ (2026-11-28) Evidently nodes (Data Drift Report, Prediction Drift, Data Quality Report) with reports a Quality Gate can check and Evidently's interactive HTML (opened from the inspector, logged to MLflow); local endpoints log their requests and expose Prometheus metrics; Endpoint Requests turns live traffic into a table to compare with the training data. Next: retraining triggered by drift, with Scheduling.
 - Scheduling: run workflows on a cron schedule; export to Dagster or Airflow.
 
 ## Phase 3: Scale and the connector ecosystem

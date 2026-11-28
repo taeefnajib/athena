@@ -31,6 +31,8 @@ class NodeFinish(BaseModel):
     error: ErrorPayload | None = None
     cached: bool = False
     """True when the node's result was reused from an earlier run instead of recomputed."""
+    documents: list[str] = []
+    """Names of the HTML reports the node produced (fetched separately; see GET /api/runs/{run}/documents)."""
 
 
 class RunFinish(BaseModel):

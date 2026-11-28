@@ -107,6 +107,8 @@ class MlflowRunObserver:
         metrics = {f"{node.id}.{k}": float(v) for k, v in result.metrics.items() if _finite(v)}
         if metrics:
             mlflow.log_metrics(metrics)
+        for name, html in (getattr(result, "documents", None) or {}).items():  # Evidently reports, next to the run
+            mlflow.log_text(html, f"athena/reports/{node.id}/{name}")
         if not self.settings.log_models:
             return
         for port, out in zip(meta.outputs, result.outputs):
