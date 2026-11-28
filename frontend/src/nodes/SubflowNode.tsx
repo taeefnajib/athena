@@ -26,6 +26,7 @@ export const SubflowNode = memo(function SubflowNode({ id, data, selected }: Nod
   const status = useExecutionStore(s => subflowStatus(s.nodeStates, ids))
   const cached = useExecutionStore(s => ids.length > 0 && ids.every(i => s.nodeStates[i]?.cached))
   const willRun = useUiStore(s => s.runPreview?.includes(id) ?? false)
+  const diffMark = useUiStore(s => s.diffMarks?.marks[id])
   const maxPorts = Math.max(sf.inputs.length, sf.outputs.length, 1)
 
   return (
@@ -39,6 +40,12 @@ export const SubflowNode = memo(function SubflowNode({ id, data, selected }: Nod
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px 2px', cursor: 'grab' }}>
         <div style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--cat-subflow)', flexShrink: 0 }} />
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sf.name}</span>
+        {diffMark && (
+          <span title={`${diffMark === 'added' ? 'Added' : 'Changed'} since the version you compared with`}
+                style={{ fontSize: 9, fontWeight: 600, color: 'var(--text)', background: 'var(--card2)', border: '1px solid var(--accent)', borderRadius: 99, padding: '0 5px', lineHeight: '13px', flexShrink: 0 }}>
+            {diffMark === 'added' ? 'new' : 'changed'}
+          </span>
+        )}
         {cached && status === 'success' && (
           <span title="Every node inside was reused from an earlier run" style={{ fontSize: 9, color: 'var(--text-muted)', border: '1px solid var(--border2)', borderRadius: 99, padding: '0 5px', lineHeight: '13px' }}>cached</span>
         )}

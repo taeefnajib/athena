@@ -22,6 +22,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   const nodeState = useExecutionStore(s => s.nodeStates[id])
   const status = nodeState?.status ?? 'idle'
   const willRun = useUiStore(s => s.runPreview?.includes(id) ?? false)
+  const diffMark = useUiStore(s => s.diffMarks?.marks[id])
 
   if (!spec) {
     return (
@@ -73,6 +74,12 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', flex: 1, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {spec.label}
         </span>
+        {diffMark && (
+          <span title={`${diffMark === 'added' ? 'Added' : 'Changed'} since the version you compared with`}
+                style={{ fontSize: 9, fontWeight: 600, color: 'var(--text)', background: 'var(--card2)', border: '1px solid var(--accent)', borderRadius: 99, padding: '0 5px', lineHeight: '13px', flexShrink: 0 }}>
+            {diffMark === 'added' ? 'new' : 'changed'}
+          </span>
+        )}
         {status === 'success' && nodeState?.cached && (
           <span title="Reused from an earlier run (nothing it depends on changed)"
                 style={{ fontSize: 9, color: 'var(--text-muted)', border: '1px solid var(--border2)', borderRadius: 99, padding: '0 5px', lineHeight: '13px', flexShrink: 0 }}>

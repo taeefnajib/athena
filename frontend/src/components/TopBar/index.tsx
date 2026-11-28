@@ -53,7 +53,7 @@ const STATUS_CONFIG = {
 export function TopBar({ onRun, onStop }: TopBarProps) {
   const { nodes, edges, undo, redo, historyIndex, history } = usePipelineStore()
   const status = useExecutionStore(s => s.status)
-  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal, setShowTrackingModal, setShowRunsModal } = useUiStore()
+  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal, setShowTrackingModal, setShowRunsModal, setShowCompareModal } = useUiStore()
   const tracking = trackingOf(usePipelineStore(s => s.meta))
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle
 
@@ -96,6 +96,7 @@ export function TopBar({ onRun, onStop }: TopBarProps) {
 
       <Btn onClick={() => setShowSaveModal(true)}>Save</Btn>
       <Btn onClick={() => setShowLoadModal(true)}>Load</Btn>
+      <Btn onClick={() => setShowCompareModal(true)} title="Compare this pipeline with a saved version">Compare</Btn>
       <Btn onClick={() => setShowTemplatesModal(true)}>Templates</Btn>
       <Btn onClick={() => setShowExportModal(true)}>Export Code</Btn>
 

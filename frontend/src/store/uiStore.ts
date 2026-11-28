@@ -16,6 +16,9 @@ interface UiState {
   runPreview: string[] | null
   /** Bumped when the subflow library changes, so the sidebar list refetches. */
   subflowLibraryVersion: number
+  showCompareModal: boolean
+  /** Changes vs another version, marked on the canvas until cleared. */
+  diffMarks: { against: string; marks: Record<string, 'added' | 'changed'>; removed: number } | null
   toast: { msg: string; type: 'info' | 'success' | 'error' | 'warn' } | null
 
   setTheme: (theme: UiState['theme']) => void
@@ -30,6 +33,8 @@ interface UiState {
   setProfileTarget: (target: UiState['profileTarget']) => void
   setRunPreview: (ids: string[] | null) => void
   bumpSubflowLibrary: () => void
+  setShowCompareModal: (show: boolean) => void
+  setDiffMarks: (marks: UiState['diffMarks']) => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
   clearToast: () => void
 }
@@ -49,6 +54,8 @@ export const useUiStore = create<UiState>()(
       profileTarget: null,
       runPreview: null,
       subflowLibraryVersion: 0,
+      showCompareModal: false,
+      diffMarks: null,
       toast: null,
 
       setTheme: (theme) => set({ theme }),
@@ -63,6 +70,8 @@ export const useUiStore = create<UiState>()(
       setProfileTarget: (target) => set({ profileTarget: target }),
       setRunPreview: (ids) => set({ runPreview: ids }),
       bumpSubflowLibrary: () => set(s => ({ subflowLibraryVersion: s.subflowLibraryVersion + 1 })),
+      setShowCompareModal: (show) => set({ showCompareModal: show }),
+      setDiffMarks: (marks) => set({ diffMarks: marks }),
       showToast: (msg, type = 'info') => {
         const toast = { msg, type }
         set({ toast })

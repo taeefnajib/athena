@@ -55,6 +55,8 @@ export function GraphCanvas() {
   const { screenToFlowPosition, fitView } = useReactFlow()
   const applyLayout = usePipelineStore(s => s.applyLayout)
   const groupNodes = usePipelineStore(s => s.groupNodes)
+  const diffMarks = useUiStore(s => s.diffMarks)
+  const setDiffMarks = useUiStore(s => s.setDiffMarks)
   const tidyToast = useUiStore(s => s.showToast)
   // Tidy layout: an explicit, undoable command (auto-layout never moves nodes on its own).
   const tidy = useCallback(() => {
@@ -252,7 +254,8 @@ export function GraphCanvas() {
   )
 
   return (
-    <div style={{ flex: 1, height: '100%', minWidth: 0 }} className="canvas-grid-dark">
+    <div style={{ flex: 1, height: '100%', minWidth: 0, position: 'relative' }} className="canvas-grid-dark">
+      {diffMarks && <DiffBanner marks={diffMarks} onClear={() => setDiffMarks(null)} />}
       <ReactFlow
         nodes={rfNodes}
         edges={displayedEdges}
@@ -286,6 +289,20 @@ export function GraphCanvas() {
           style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }}
         />
       </ReactFlow>
+    </div>
+  )
+}
+
+
+/** Shown while a comparison is marked on the canvas: what it's against, the counts, and Clear. */
+function DiffBanner({ marks, onClear }: { marks: { against: string; marks: Record<string, 'added' | 'changed'>; removed: number }; onClear: () => void }) {
+  const values = Object.values(marks.marks)
+  const added = values.filter(v => v === 'added').length, changed = values.length - added
+  return (
+    <div role="status" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 5, display: 'flex', alignItems: 'center', gap: 10,
+                                background: 'var(--card2)', border: '1px solid var(--border2)', borderRadius: 99, padding: '5px 6px 5px 14px', boxShadow: 'var(--shadow)', fontSize: 12, color: 'var(--text)' }}>
+      <span>Changes since <strong>{marks.against}</strong>: {added} new · {changed} changed{marks.removed ? ` · ${marks.removed} removed (see Compare)` : ''}</span>
+      <button onClick={onClear} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', cursor: 'pointer' }}>Clear</button>
     </div>
   )
 }
