@@ -174,6 +174,15 @@ Select a few nodes (Ctrl-click them, or Shift-drag a box around them) and press 
 
 Click a subflow to see the nodes inside with their status and previews, rename it, **Ungroup** it to edit (Ctrl+G again to regroup), or **Save to library**. Saved subflows appear under **My subflows** at the top of the node library; drag one into any pipeline.
 
+### Serving: deploy a model
+
+After a run, select a model node (or Pipeline Wrapper, Calibration, Decision Threshold…), open **Preview** and press **Deploy**. Athena packages the trained model as a standalone prediction service in `~/.athena/models/<name>/`:
+
+- `service.py` (FastAPI: `POST /predict`, `GET /schema`, `GET /health`, interactive docs at `/docs`), `model.joblib`, `schema.json` (the features, their kinds and an example request built from medians, never a real row), pinned `requirements.txt`, a `Dockerfile`, a BentoML service with `bentofile.yaml`, and a README. It runs without Athena.
+- **Serving** (top bar) lists your packaged models. **Start endpoint** runs one locally (its own process, reachable only from this machine, stopped when Athena stops); the test console sends a request and shows the answer. **Download .zip** to run it elsewhere: `python service.py`, `docker build`, or `bentoml serve`.
+
+**Know this:** the served model expects the features as they were when it was trained. Preprocessing that ran before the split (imputing, scaling, encoding…) is not part of it yet; the Deploy window names those steps so you can apply them to requests. Serving the preprocessing too is next on the roadmap.
+
 ### Comparing versions
 
 **Compare** (top bar) shows what changed on the canvas since a saved pipeline: nodes added, removed or changed (each setting's old → new value, including execution settings and changes inside subflows), connection changes and pipeline settings. **Show on canvas** tags the new and changed nodes until you press **Clear**. Nodes are matched by id, so a node whose settings changed shows as changed, not as removed and re-added.

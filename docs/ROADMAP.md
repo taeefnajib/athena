@@ -52,7 +52,7 @@ Goal: make adding a node, connector or runtime a one-place change, and stop runn
 
 ## Phase 2: Production MLOps
 
-- Packaging and serving: BentoML service export, Docker image build, local endpoint with a test console; batch inference workflows.
+- Packaging and serving: ✅ (2026-11-28) Deploy any trained model from a run as a standalone bundle (FastAPI service, pinned requirements, Dockerfile, BentoML service and bentofile, example request); run it as a local endpoint (its own process, 127.0.0.1, stops with Athena) with a test console. Next: serve the preprocessing too (today the served model expects features as they were after upstream steps, and the Deploy window names those steps); build Docker images and bentos from the UI; batch inference workflows.
 - Quality gates: acceptance criteria nodes ("deploy only if F1 ≥ 0.9 and no drift"), fairness checks, model cards.
 - Monitoring: Evidently reports (data drift, prediction drift, data quality); Prometheus metrics for local endpoints; retraining workflows triggered by drift.
 - Scheduling: run workflows on a cron schedule; export to Dagster or Airflow.

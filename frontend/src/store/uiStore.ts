@@ -17,6 +17,9 @@ interface UiState {
   /** Bumped when the subflow library changes, so the sidebar list refetches. */
   subflowLibraryVersion: number
   showCompareModal: boolean
+  showServingModal: boolean
+  /** A model output to package (set by Deploy in the inspector). */
+  deployTarget: { nodeId: string; port: number } | null
   /** Changes vs another version, marked on the canvas until cleared. */
   diffMarks: { against: string; marks: Record<string, 'added' | 'changed'>; removed: number } | null
   toast: { msg: string; type: 'info' | 'success' | 'error' | 'warn' } | null
@@ -34,6 +37,8 @@ interface UiState {
   setRunPreview: (ids: string[] | null) => void
   bumpSubflowLibrary: () => void
   setShowCompareModal: (show: boolean) => void
+  setShowServingModal: (show: boolean) => void
+  setDeployTarget: (target: UiState['deployTarget']) => void
   setDiffMarks: (marks: UiState['diffMarks']) => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
   clearToast: () => void
@@ -55,6 +60,8 @@ export const useUiStore = create<UiState>()(
       runPreview: null,
       subflowLibraryVersion: 0,
       showCompareModal: false,
+      showServingModal: false,
+      deployTarget: null,
       diffMarks: null,
       toast: null,
 
@@ -71,6 +78,8 @@ export const useUiStore = create<UiState>()(
       setRunPreview: (ids) => set({ runPreview: ids }),
       bumpSubflowLibrary: () => set(s => ({ subflowLibraryVersion: s.subflowLibraryVersion + 1 })),
       setShowCompareModal: (show) => set({ showCompareModal: show }),
+      setShowServingModal: (show) => set(show ? { showServingModal: true } : { showServingModal: false, deployTarget: null }),
+      setDeployTarget: (target) => set({ deployTarget: target, showServingModal: target !== null }),
       setDiffMarks: (marks) => set({ diffMarks: marks }),
       showToast: (msg, type = 'info') => {
         const toast = { msg, type }
