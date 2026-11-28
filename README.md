@@ -174,6 +174,10 @@ Select a few nodes (Ctrl-click them, or Shift-drag a box around them) and press 
 
 Click a subflow to see the nodes inside with their status and previews, rename it, **Ungroup** it to edit (Ctrl+G again to regroup), or **Save to library**. Saved subflows appear under **My subflows** at the top of the node library; drag one into any pipeline.
 
+### Comparing versions
+
+**Compare** (top bar) shows what changed on the canvas since a saved pipeline: nodes added, removed or changed (each setting's old → new value, including execution settings and changes inside subflows), connection changes and pipeline settings. **Show on canvas** tags the new and changed nodes until you press **Clear**. Nodes are matched by id, so a node whose settings changed shows as changed, not as removed and re-added.
+
 ### Re-running fast: the cache and "Run from here"
 
 - **Unchanged nodes aren't recomputed.** When you run again, every node whose settings, upstream nodes and input files are unchanged reuses its earlier result; it shows a **cached** tag and says so in its Logs tab. Change a node and only it and the nodes after it run again; edit the CSV file and everything that depends on it re-runs.

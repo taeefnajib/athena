@@ -27,7 +27,7 @@ export function Toaster() {
             background: 'var(--card)', border: `1px solid ${COLORS[toast.type] ?? 'var(--border)'}`,
             borderRadius: 8, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 8,
             boxShadow: 'var(--shadow-lg)', zIndex: 9999, fontSize: 13, cursor: 'pointer',
-            whiteSpace: 'nowrap',
+            maxWidth: 'min(720px, calc(100vw - 32px))', overflowWrap: 'anywhere',  // long paths wrap instead of running off-screen
           }}
         >
           <div style={{ width: 7, height: 7, borderRadius: '50%', background: COLORS[toast.type], flexShrink: 0 }} />
