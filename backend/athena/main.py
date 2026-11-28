@@ -42,8 +42,9 @@ async def lifespan(app: FastAPI):
     yield
     await scheduler.stop()
     pool.shutdown()
-    from athena.serving import endpoints
+    from athena.serving import builds, endpoints
     endpoints.stop_all()  # local prediction endpoints end with Athena
+    builds.stop_all()  # and so do image builds
     clear_cache(settings.data_dir / "cache", keep_store=settings.keep_cache)
 
 

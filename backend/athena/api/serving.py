@@ -1,6 +1,6 @@
-"""Model serving: bundles (build, list, download, delete) and local endpoints (start, stop, test, metrics)."""
+"""Model serving: bundles (package, list, download, delete, build an image), and local endpoints (start, stop, test, metrics)."""
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import anyio
 from fastapi import APIRouter, HTTPException
@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from athena.core.artifacts import ArtifactNotFound
 from athena.schemas.pipeline import PipelineSpec
-from athena.serving import endpoints
+from athena.serving import builds, endpoints
 from athena.serving.bundle import (
     BundleError,
     bundle_from_run,
@@ -29,6 +29,10 @@ class BundleRequest(BaseModel):
     port: int = 0
 
 
+class BuildRequest(BaseModel):
+    target: Literal["docker", "bento"]
+
+
 def _bad(exc: Exception, code: str, status: int = 400) -> HTTPException:
     return HTTPException(status, detail={"detail": str(exc).splitlines()[0] if str(exc) else type(exc).__name__, "code": code})
 
@@ -41,7 +45,8 @@ async def bundles() -> dict[str, Any]:
             path = Path(b["path"])
             logs = "--log-requests" in (path / "service.py").read_text(encoding="utf-8")
             out.append({**b, "monitoring": {"logs_requests": logs, "requests_logged": endpoints.logged_requests(path),
-                                            "request_log": str(endpoints.request_log(path))}})
+                                            "request_log": str(endpoints.request_log(path))},
+                        "build": builds.status(b["slug"])})
         return out
     items = await anyio.to_thread.run_sync(build)
     live = endpoints.running()
@@ -75,7 +80,41 @@ async def delete(slug: str) -> dict[str, bool]:
     except BundleError as exc:
         raise _bad(exc, "BUNDLE_NOT_FOUND", 404) from exc
     endpoints.stop(path.name)
+    await anyio.to_thread.run_sync(lambda: builds.cancel(path.name))
     await anyio.to_thread.run_sync(lambda: shutil.rmtree(path))
+    return {"ok": True}
+
+
+@router.get("/tools")
+async def build_tools() -> dict[str, Any]:
+    """Whether docker / bentoml are installed, for the Build buttons."""
+    return await anyio.to_thread.run_sync(builds.tools)
+
+
+@router.post("/bundles/{slug}/build")
+async def start_build(slug: str, req: BuildRequest) -> dict[str, Any]:
+    """Build the bundle into a Docker image or a Bento in the background; poll GET for its status and log."""
+    try:
+        return await anyio.to_thread.run_sync(lambda: builds.start(slug, req.target))
+    except builds.BuildBusy as exc:
+        raise _bad(exc, "BUILD_RUNNING", 409) from exc
+    except builds.BuildError as exc:
+        raise _bad(exc, "BUILD_UNAVAILABLE") from exc
+    except BundleError as exc:
+        raise _bad(exc, "BUNDLE_NOT_FOUND", 404) from exc
+
+
+@router.get("/bundles/{slug}/build")
+async def build_status(slug: str) -> dict[str, Any] | None:
+    return await anyio.to_thread.run_sync(lambda: builds.status(slug))
+
+
+@router.delete("/bundles/{slug}/build")
+async def cancel_build(slug: str) -> dict[str, bool]:
+    try:
+        await anyio.to_thread.run_sync(lambda: builds.cancel(slug))
+    except BundleError as exc:
+        raise _bad(exc, "BUNDLE_NOT_FOUND", 404) from exc
     return {"ok": True}
 
 
