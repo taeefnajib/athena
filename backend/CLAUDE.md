@@ -330,6 +330,12 @@ Rules:
 - `serving/templates.py`: the standalone `service.py` (FastAPI), BentoML service, bentofile, Dockerfile and README. Keep them free of Athena imports.
 - `serving/endpoints.py`: each endpoint is `python service.py --exit-with-parent` in its own process on a free 127.0.0.1 port (user models never load in the API process). Its stdin is a pipe Athena holds, so the service exits when Athena does, even after a crash; `stop_all()` runs at shutdown too. API: `api/serving.py` (`/api/serving/bundles`, `/api/serving/endpoints/{slug}`, `.../predict` for the test console).
 
+### Quality gates, fairness, model cards
+
+- `nodes/gates.py`: `quality_gate` (inputs: up to three reports and an optional model; outputs: the model, passed through, and a report) and `fairness_check`. `_athena_check_rules` / `_athena_fairness` are self-contained and copied into exports. A failing gate with `on_fail="stop"` raises, so the engine halts everything downstream of it: that is the enforcement.
+- `serving/card.py`: `gather_evidence` collects, from the run, the reports of nodes that consumed the deployed model and the Quality Gates that checked it (a gate without a saved result failed or didn't run: reported as `passed: null`, never as a pass); `model_card` writes `MODEL_CARD.md`.
+- Workers and the API server write UTF-8 (`utils/tracing.utf8_output`): a legacy Windows code page would otherwise turn a log line containing ✓ or "São Paulo" into a node crash.
+
 ### Run outputs and profiling
 
 - The worker pickles every node's result into the run's cache folder (`<data_dir>/cache/<run_id>/`) and records `node_id -> cache key` in `index.json`, whether or not `node.cache` is on (that flag only decides whether a cached result is *reused*). `core/artifacts.py: load_output()` reads them back in the API process; it deserialises results, never runs handlers.
