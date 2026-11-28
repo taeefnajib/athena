@@ -332,8 +332,10 @@ def test_quality_gate_and_fairness(tmp_path: Path):
     g.n("gate", "quality_gate", rules="f1 >= 0.5\ndemographic_parity_difference <= 0.9")
     g.e("lr_m", "gate", 0, 0); g.e("fair", "gate", 0, 1); g.e("lr", "gate", 0, 3)
     g.n("warn", "quality_gate", rules="f1 >= 0.999", on_fail="warn"); g.e("lr_m", "warn", 0, 0)
+    g.n("skip", "quality_gate", rules="f1 >= 0.5", on_fail="skip"); g.e("lr_m", "skip", 0, 0); g.e("csv", "skip", 0, 4)
     ns = run_both(g.spec(), tmp_path)
     assert ns["report_gate"]["passed"] == 1.0 and ns["report_warn"]["passed"] == 0.0
+    assert len(ns["df_skip"]) == 600  # the dataset passes through a gate that's met
 
 
 def test_evidently_monitoring(tmp_path: Path):

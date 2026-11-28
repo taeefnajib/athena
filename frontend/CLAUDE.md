@@ -159,6 +159,8 @@ Tabs: **Settings** (default), **Data Preview**, **Logs**, **Metrics**, **Code** 
 
 **Reports and monitoring**: a node whose `node_finish` lists `documents` (the Evidently nodes) gets *Open report* (new tab) and a download in `RightSidebar/OutputActions.tsx`, via `lib/profile.ts: documentUrl`. The Serving modal's Monitoring section shows how many request rows the endpoint has logged, links its Prometheus metrics (through the backend), and explains how to compare live traffic with the training data (Endpoint Requests → Data Drift Report).
 
+**Schedules** (`modals/SchedulesModal.tsx`, TopBar *Schedules*): list / create / edit / pause / delete schedules of saved pipeline files (path, or one from `/api/pipelines/library`), a cron field with presets and a live preview (`/api/schedules/preview`), *Run now*, Airflow / Dagster export links, and the run history (polled while a run is going). Export Code also offers Airflow and Dagster with a cron field. A Quality Gate in skip mode shows as "Not met (the nodes after it were skipped)" in the Serving window.
+
 **Tidy layout** (canvas controls) runs `autoLayout` (dagre, left to right) and applies it with `applyLayout` as one undo step that first records the current positions, so Ctrl+Z restores them exactly. It only ever runs on that explicit command.
 
 - **Settings**: render a form derived from `node.config` schema. Each `ConfigField.type` maps to a component in `components/ui/`. Update the store on `onChange` for toggles/selects, on `onBlur` for text/textarea (avoid spamming history during typing). Validation: numbers must be numbers; required fields highlighted on save.

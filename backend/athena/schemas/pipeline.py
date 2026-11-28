@@ -85,4 +85,5 @@ class LoadRequest(BaseModel):
 
 class ExportRequest(BaseModel):
     spec: PipelineSpec
-    format: str  # "python" | "notebook" | "json" | "model"
+    format: str  # "python" | "notebook" | "json" | "airflow" | "dagster"
+    cron: str = "@daily"  # airflow / dagster: the schedule

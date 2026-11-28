@@ -208,6 +208,15 @@ Install the extra once: `uv sync --extra monitoring` (Evidently).
 - **Gate on them** like any metric: `drifted_columns == 0`, `prediction_drift == 0`, `missing_share <= 0.05` in a Quality Gate. With MLflow tracking on, the HTML reports are logged with the run (`athena/reports/<node>/`).
 - **Live traffic:** local endpoints log every predicted row (its raw features, the prediction and a timestamp) to `logs/requests.jsonl` in their bundle and expose **Prometheus metrics** at `/metrics` (requests by status, latency histogram, rows, predictions by class). The **Endpoint Requests** node reads that log as a table: connect it as the *current* input of Data Drift Report or Prediction Drift, with the training data as the reference, to see whether what the model receives still looks like what it learned from. Outside Athena, `python service.py --log-requests requests.jsonl` does the same.
 
+### Schedules: run pipelines automatically
+
+**Schedules** (top bar) runs a saved pipeline file on a cron schedule: pick the file (or one from your library), a preset or a cron expression (`0 2 * * *` is every day at 02:00; the window shows what it means and the next three times), and save. **Run now** starts it immediately, and each schedule keeps the history of its runs: when, why, how long, and which node failed.
+
+- Schedules run while Athena is running, in this computer's local time. Times missed while Athena was closed aren't caught up, and a scheduled run waits if another pipeline is running (it never starts twice). `ATHENA_SCHEDULER=false` keeps them without running them.
+- The **saved file** runs, not the canvas: save your changes for the next run to pick them up.
+- **Retrain only when the data drifts:** Data Drift Report (new data against the training data) → **Quality Gate** with the rule `dataset_drift == 1` and *When a rule fails* set to **skip**, with the new data passing through the gate into training and Model Saver / Register Model. Without drift the gate skips everything after it and the run still completes; with drift the model is retrained on the new data.
+- **Airflow and Dagster:** *Export Airflow DAG* / *Export Dagster job* (in Schedules, or Export Code with a cron) give a zip with the pipeline script and a DAG or job running it on the schedule, ready to drop into your orchestrator.
+
 ### Comparing versions
 
 **Compare** (top bar) shows what changed on the canvas since a saved pipeline: nodes added, removed or changed (each setting's old → new value, including execution settings and changes inside subflows), connection changes and pipeline settings. **Show on canvas** tags the new and changed nodes until you press **Clear**. Nodes are matched by id, so a node whose settings changed shows as changed, not as removed and re-added.
@@ -386,6 +395,7 @@ All backend settings are environment variables prefixed `ATHENA_`:
 | `ATHENA_KEEP_CACHE` | `false` | Keep cached node results when Athena restarts (otherwise the cache is cleared on exit) |
 | `ATHENA_LOG_LEVEL` | `INFO` | structlog level |
 | `ATHENA_ALLOW_CUSTOM_CODE` | `true` | Set to `false` to disable the Custom Code node |
+| `ATHENA_SCHEDULER` | `true` | Set to `false` to keep schedules without running them |
 
 Example — raise the node timeout:
 

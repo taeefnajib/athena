@@ -36,5 +36,8 @@ class HandlerResult:
     """What a preprocessing node learned, as a step ``athena/serving/replay_core.py`` can redo on new rows (so a
     deployed model takes raw data). ``{"kind": "skip"}`` marks training-only steps (row filters, balancing)."""
     documents: dict[str, str] = field(default_factory=dict)
+    halt: str | None = None
+    """Set by a node that decides the nodes after it shouldn't run (a Quality Gate with on_fail=skip): the engine
+    skips all its descendants, without failing the run. The text says why (logged)."""
     """Full HTML reports by file name (e.g. Evidently's ``report.html``), too large for a preview: listed in
     ``node_finish.documents`` and served by ``GET /api/runs/{run}/documents/{node}/{name}``."""

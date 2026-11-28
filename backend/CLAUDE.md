@@ -85,7 +85,11 @@ backend/athena/
 ├── storage/
 │   ├── __init__.py
 │   ├── files.py              # save/load .athena files
+│   ├── schedules.py          # schedules.json: cron schedules of saved pipelines + run history
 │   └── autosave.py           # autosave dir at ~/.athena/autosave/
+│
+├── scheduling/
+│   └── scheduler.py          # the asyncio loop that starts due schedules
 │
 └── utils/
     ├── plotting.py           # matplotlib -> base64 PNG helper
@@ -347,6 +351,15 @@ Rules:
 - **Endpoints:** `service.py` keeps in-process counters and serves `/metrics` (Prometheus text format, no dependency); with `--log-requests FILE` it appends each predicted row (features after type coercion, before preprocessing; `prediction`; `timestamp`) as JSON Lines and rotates to `*.1.jsonl` at 50 MB. Logging never fails a prediction. `serving/endpoints.py` passes `--log-requests <bundle>/logs/requests.jsonl` only to services that support it (bundles made earlier don't); `GET /api/serving/endpoints/{slug}/metrics` proxies the metrics, and bundle listings carry `monitoring: {logs_requests, requests_logged, request_log}`.
 - `nodes/traffic.py`: `endpoint_requests` (`reusable=False`) reads a bundle's log by model name through `_athena_endpoint_requests` (rotated file first; a half-written last line is skipped).
 
+### Scheduling
+
+- `core/cron.py`: a dependency-free cron parser (`parse`, `next_after`, `next_times`, `describe`): five fields, ranges, steps, lists, names, macros; day-of-month and day-of-week OR'ed when both are set, as in cron. Times are naive local wall-clock times on purpose (cron semantics; no DST offset arithmetic).
+- `storage/schedules.py`: `<data_dir>/schedules.json` (atomic writes, a lock). A schedule = name, saved pipeline path, cron, enabled, `next_run`, and the last 50 `RunRecord`s (trigger, status, failing node, gates that skipped).
+- `scheduling/scheduler.py`: an asyncio loop started in the app lifespan when `settings.scheduler` (`ATHENA_SCHEDULER`), ticking every 15 s. `catch_up()` at startup moves past fire times to the future (no catch-up runs). `tick()` advances `next_run` *before* starting, so a late schedule runs once; a busy run slot leaves it due for a later tick. `start_run()` re-reads the file each time, runs it through `core/executor.execute` (the same worker path as the UI) and summarises the broker events into the history. Tests call `tick(now, broker)` directly.
+- API `api/schedules.py`: `GET/PUT /api/schedules`, `DELETE /api/schedules/{name}`, `POST .../{name}/run`, `GET .../{name}/export?target=airflow|dagster`, `GET /api/schedules/preview?cron=`.
+- **Skipping:** `HandlerResult.halt` (a reason) makes the engine skip all descendants of that node without failing the run; `node_finish.halted` says so. Only the Quality Gate uses it (`on_fail="skip"`); its optional `dataset` input/output (port 4 / port 2) lets data be gated, not just models. In exported scripts a skip ends the script (`SystemExit(0)`).
+- `core/orchestrators.py`: Airflow / Dagster zips. The pipeline script is `pipeline_to_python` unchanged (so the equivalence tests cover it); the orchestrator file runs it with `runpy` and turns `SystemExit` into the task's outcome. Tests run the files against stub `airflow` / `dagster` modules.
+
 ### Run outputs and profiling
 
 - The worker pickles every node's result into the run's cache folder (`<data_dir>/cache/<run_id>/`) and records `node_id -> cache key` in `index.json`, whether or not `node.cache` is on (that flag only decides whether a cached result is *reused*). `core/artifacts.py: load_output()` reads them back in the API process; it deserialises results, never runs handlers.
@@ -459,6 +472,7 @@ Autosave: `~/.athena/autosave/latest.athena` written every 10s when the in-memor
 | `ATHENA_KEEP_CACHE` | `false` | Keep cached node results across restarts |
 | `ATHENA_LOG_LEVEL` | `INFO` | structlog level |
 | `ATHENA_ALLOW_CUSTOM_CODE` | `true` | Disables `custom_code` if false |
+| `ATHENA_SCHEDULER` | `true` | Runs schedules while the server runs; false keeps them idle |
 
 No environment variable should ever change the **on-the-wire schema**. Configuration affects behavior, not contracts.
 

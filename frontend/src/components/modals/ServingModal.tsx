@@ -195,7 +195,7 @@ export function ServingModal() {
                 )}
                 {current.quality_gates.map(g => (
                   <div key={g.id} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 4 }}>
-                    {g.passed === true ? '✓ Passed' : g.passed === false ? '⚠ Failed (warn only)' : '⚠ Did not pass in this run'} · {g.node}{' '}
+                    {g.passed === true ? '✓ Passed' : g.passed === false ? (g.on_fail === 'skip' ? '⚠ Not met (the nodes after it were skipped)' : '⚠ Failed (warn only)') : '⚠ Did not pass in this run'} · {g.node}{' '}
                     <span style={{ ...mono, color: 'var(--text-dim)' }}>{g.rules.split('\n').filter(Boolean).join(' · ')}</span>
                   </div>
                 ))}

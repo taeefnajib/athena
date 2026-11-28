@@ -53,7 +53,7 @@ const STATUS_CONFIG = {
 export function TopBar({ onRun, onStop }: TopBarProps) {
   const { nodes, edges, undo, redo, historyIndex, history } = usePipelineStore()
   const status = useExecutionStore(s => s.status)
-  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal, setShowTrackingModal, setShowRunsModal, setShowCompareModal, setShowServingModal } = useUiStore()
+  const { theme, setTheme, setShowExportModal, setShowTemplatesModal, setShowSaveModal, setShowLoadModal, setShowConnectionsModal, setShowTrackingModal, setShowRunsModal, setShowCompareModal, setShowServingModal, setShowSchedulesModal } = useUiStore()
   const tracking = trackingOf(usePipelineStore(s => s.meta))
   const sc = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle
 
@@ -109,6 +109,7 @@ export function TopBar({ onRun, onStop }: TopBarProps) {
       </Btn>
       <Btn onClick={() => setShowRunsModal(true)} title="Run history and comparison">Runs</Btn>
       <Btn onClick={() => setShowServingModal(true)} title="Packaged models and local prediction endpoints">Serving</Btn>
+      <Btn onClick={() => setShowSchedulesModal(true)} title="Run saved pipelines on a schedule; export to Airflow or Dagster">Schedules</Btn>
 
       <div style={{ flex: 1 }} />
 

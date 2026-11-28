@@ -181,6 +181,7 @@ When adding a new node type:
    - `{ "type": "node_finish",  "node_id": "n1", "status": "success", "preview": {...}, "metrics": {...}, "duration_ms": 1234, "cached": false }`
      - `cached: true` means the result was reused from an earlier run instead of recomputed.
      - `documents: ["report.html"]` (optional, default `[]`) names full HTML reports the node produced (Evidently's, for the monitoring nodes), too large for a preview. They're fetched with `GET /api/runs/{run_id}/documents/{node_id}/{name}` (served sandboxed; `?download=1` for a file).
+     - `halted: true` (optional, default `false`) means the node chose to skip everything after it (a Quality Gate with `on_fail: "skip"`): those nodes don't run and send no events, and the run still ends `completed`.
      - or `{ "type": "node_finish", "node_id": "n1", "status": "error", "error": { "message": "...", "traceback": "..." } }`
 4. After the last node: `{ "type": "run_finish", "status": "completed" | "error" }`.
    - At any point, observers may send `{ "type": "run_info", "tracking": {...} | null, "message": "..." | null, "warning": "..." | null }`. When the pipeline is tracked, the first one carries the MLflow run (`run_id`, `experiment`, `experiment_id`, `destination`, `url`). Warnings mean tracking had a problem; they never fail the run.
@@ -222,7 +223,8 @@ Backend bugs (the executor itself failing) close the WS with code 1011. Frontend
 - **Caching** — each node's output is keyed by a hash of `(node.type, node.config, upstream keys, fingerprint of local input files)` and shared across runs in `~/.athena/cache/store/`. On re-run, handlers whose key is cached are skipped (`node_finish.cached: true`). Nodes declared `reusable=False` (side effects, live sources) and nodes with `cache: false` always execute; their key is salted with a digest of what they produced, so downstream nodes recompute exactly when that output changes. The store is LRU-trimmed to `ATHENA_CACHE_MAX_GB` after each run and purged on app close unless `ATHENA_KEEP_CACHE=true`.
 - **Subflows** — expanded into their inner nodes before validation, scheduling and export; a `start_from` id that is a subflow means all its inner nodes.
 - **Partial runs** — `POST /api/pipelines/run` accepts an optional `start_from: [node_id, ...]`. Those nodes and their descendants re-run; their ancestors are reused from the cache (or computed if missing); unrelated branches are skipped. The frontend exposes this as "Run from here" in the inspector, highlighting the nodes that will run while hovering.
-- **Concurrency** — single-pipeline-at-a-time for v1. Reject a second run with HTTP 409 while one is in flight. Nodes execute sequentially in topo order; parallelism within a level is a v2 concern.
+- **Concurrency** — single-pipeline-at-a-time for v1. Reject a second run with HTTP 409 while one is in flight. Nodes execute sequentially in topo order; parallelism within a level is a v2 concern. Scheduled runs share that slot: a due schedule waits until it's free.
+- **Schedules** — `<data_dir>/schedules.json` runs saved `.athena` files on cron expressions (local time) while Athena runs (`ATHENA_SCHEDULER`). Missed fire times are not caught up; a schedule never stacks runs. Each run is recorded in the schedule's history.
 - **Resource limits** — wrap each handler in a soft timeout (default 5 minutes, configurable per node). On timeout, mark error and continue cleanup.
 
 ---
@@ -234,6 +236,7 @@ The "Export Code" feature must produce code that runs standalone on the user's m
 - **Python script** — uses `pandas`, `scikit-learn`, `xgboost`, etc. Each node maps to a labeled section with the same comments a careful data scientist would write. Order is the topological order. Variables are named after node ids (`df_n1`, `model_n5`, `X_train`, `y_train`, ...).
 - **Jupyter notebook** — same content, one cell per node, with a markdown cell above each describing what it does.
 - **Pipeline JSON** — the `PipelineSpec` from §4.1, pretty-printed.
+- **Airflow DAG / Dagster job** — a zip: the Python script unchanged, an orchestrator file that runs it with `runpy` on a cron schedule (one task; a skipping Quality Gate ends it successfully, a failing one fails it), and a README (`core/orchestrators.py`).
 - **Trained model** — joblib/pickle of the fitted estimator from a `model_saver` node.
 
 Code generation lives in `backend/athena/core/codegen.py` (pure functions of the `PipelineSpec`). Every output port becomes a variable named after its type and node (`df_n1`, `model_n4`, `X_train_n3`, `report_n6`); each node's template (`backend/athena/nodes/export/`, wired with `code=EXPORT["<type>"]`) receives `in_<port>` / `out_<port>` variable names resolved through the real edges, so exports follow the actual graph. Imports are hoisted and de-duplicated; shared helpers (`_athena_target`, `_athena_tune`, the ensemble wrappers) are included only when used. The script and the notebook are built from the same per-node sections.

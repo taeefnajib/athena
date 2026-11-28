@@ -18,6 +18,7 @@ interface UiState {
   subflowLibraryVersion: number
   showCompareModal: boolean
   showServingModal: boolean
+  showSchedulesModal: boolean
   /** A model output to package (set by Deploy in the inspector). */
   deployTarget: { nodeId: string; port: number } | null
   /** Changes vs another version, marked on the canvas until cleared. */
@@ -38,6 +39,7 @@ interface UiState {
   bumpSubflowLibrary: () => void
   setShowCompareModal: (show: boolean) => void
   setShowServingModal: (show: boolean) => void
+  setShowSchedulesModal: (show: boolean) => void
   setDeployTarget: (target: UiState['deployTarget']) => void
   setDiffMarks: (marks: UiState['diffMarks']) => void
   showToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warn') => void
@@ -61,6 +63,7 @@ export const useUiStore = create<UiState>()(
       subflowLibraryVersion: 0,
       showCompareModal: false,
       showServingModal: false,
+      showSchedulesModal: false,
       deployTarget: null,
       diffMarks: null,
       toast: null,
@@ -79,6 +82,7 @@ export const useUiStore = create<UiState>()(
       bumpSubflowLibrary: () => set(s => ({ subflowLibraryVersion: s.subflowLibraryVersion + 1 })),
       setShowCompareModal: (show) => set({ showCompareModal: show }),
       setShowServingModal: (show) => set(show ? { showServingModal: true } : { showServingModal: false, deployTarget: null }),
+      setShowSchedulesModal: (show) => set({ showSchedulesModal: show }),
       setDeployTarget: (target) => set({ deployTarget: target, showServingModal: target !== null }),
       setDiffMarks: (marks) => set({ diffMarks: marks }),
       showToast: (msg, type = 'info') => {

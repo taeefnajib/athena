@@ -79,6 +79,7 @@ def run_spec(
     forced = _reachable({i for i in (start_from or []) if i in known}, edges_dicts, downstream=True)
     needed = forced | _reachable(forced, edges_dicts, downstream=False) if start_from else None
     used_keys: set[str] = set()
+    halted: set[str] = set()  # descendants of a node that halted (Quality Gate, on_fail=skip): not run
 
     observers: list[RunObserver] = []
 
@@ -103,6 +104,8 @@ def run_spec(
             return finish("cancelled")
         node = spec.node(node_id)
         if needed is not None and node_id not in needed:
+            continue
+        if node_id in halted:
             continue
 
         inputs: list[object] = []
@@ -173,12 +176,17 @@ def run_spec(
 
         for i, art in enumerate(result.outputs):
             artifacts[(node_id, i)] = art
+        halt = getattr(result, "halt", None)  # results cached before the field existed lack it
+        if halt:
+            skipped = _reachable({node_id}, edges_dicts, downstream=True) - {node_id}
+            halted |= skipped
+            node_log.warning(f"{halt}: skipping the {len(skipped)} node(s) after it ({', '.join(sorted(skipped)) or 'none'})")
         observers = notify(observers, emit, "on_node_finish", node, meta, result)
         emit({"type": "node_finish", "node_id": node_id, "status": "success",
               "duration_ms": int((time.monotonic() - start) * 1000),
               "preview": result.preview.model_dump() if result.preview else None,
               "metrics": result.metrics, "cached": hit is not None,
-              "documents": sorted(getattr(result, "documents", None) or {})})  # results cached before the field existed lack it
+              "documents": sorted(getattr(result, "documents", None) or {}), "halted": bool(halt)})  # results cached before the field existed lack it
 
     return finish("completed")
 

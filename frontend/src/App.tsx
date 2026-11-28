@@ -13,6 +13,7 @@ import { RunsModal } from './components/modals/RunsModal'
 import { ProfileModal } from './components/modals/ProfileModal'
 import { CompareModal } from './components/modals/CompareModal'
 import { ServingModal } from './components/modals/ServingModal'
+import { SchedulesModal } from './components/modals/SchedulesModal'
 import { Toaster } from './components/ui/Toast'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useTheme } from './hooks/useTheme'
@@ -23,7 +24,7 @@ import { useUiStore } from './store/uiStore'
 
 function AppInner() {
   const { run, stop } = useRunPipeline()
-  const { showExportModal, showTemplatesModal, showSaveModal, showLoadModal, showConnectionsModal, showTrackingModal, showRunsModal, profileTarget, showCompareModal, showServingModal } = useUiStore()
+  const { showExportModal, showTemplatesModal, showSaveModal, showLoadModal, showConnectionsModal, showTrackingModal, showRunsModal, profileTarget, showCompareModal, showServingModal, showSchedulesModal } = useUiStore()
 
   useTheme()
   useKeyboardShortcuts(run, stop)
@@ -47,6 +48,7 @@ function AppInner() {
       {showRunsModal && <RunsModal />}
       {showCompareModal && <CompareModal />}
       {showServingModal && <ServingModal />}
+      {showSchedulesModal && <SchedulesModal />}
       {profileTarget && <ProfileModal key={`${profileTarget.nodeId}:${profileTarget.port}`} />}
     </div>
   )
