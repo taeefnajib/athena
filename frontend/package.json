@@ -10,14 +10,22 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@codemirror/lang-python": "6.1.6",
+    "@codemirror/lang-sql": "6.8.0",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.44.2",
+    "@dagrejs/dagre": "1.1.4",
+    "@lezer/highlight": "1.2.5",
+    "@tanstack/react-table": "^8.20.6",
     "@xyflow/react": "^12.3.6",
-    "zustand": "^5.0.2",
+    "clsx": "^2.1.1",
+    "codemirror": "6.0.1",
     "framer-motion": "^11.12.0",
     "lucide-react": "^0.468.0",
-    "clsx": "^2.1.1",
-    "@tanstack/react-table": "^8.20.6",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

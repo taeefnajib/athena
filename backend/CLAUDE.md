@@ -43,7 +43,7 @@ backend/athena/
 │
 ├── api/
 │   ├── __init__.py
-│   ├── pipelines.py          # POST /run, /save, /load, /export, /autosave
+│   ├── pipelines.py          # POST /run, /save, /load, /export, /code (per-node code view), /autosave
 │   ├── runs.py               # GET /runs/{id}, POST /runs/{id}/cancel, GET artifacts
 │   ├── ws.py                 # WS /ws/runs/{id} — per-run event stream
 │   └── nodes.py              # GET /nodes — registry metadata for the frontend (debug aid)
@@ -313,7 +313,7 @@ Rules:
 - **No telemetry:** the module sets `RUNTIME__DLTHUB_TELEMETRY=false` before dlt loads; codegen's `PRELUDE` does the same at the top of any exported script that imports dlt.
 - Tests use a local mock API (`tests/test_api_ingestion.py`) covering every pagination style and auth method; never call real APIs in tests.
 - **SaaS apps:** `connectors/saas_presets.py` is data (base URL, auth, paginator, resources per app); `connectors/saas.py` generates one connector per preset (`saas_<app>`, only that app's credentials) and builds the dlt config; `nodes/api.py: saas_fetch` reads it. Stripe and Zendesk page with "has more + cursor/last id", which `connectors/saas_paginator.py: _AthenaHasMorePaginator` handles (imported only when fetching; copied verbatim into exports). Add an app by adding a preset and a mock in `tests/test_saas.py` that is strict where the real API is.
-- Widgets: `connection` takes `connector="a,b"` (any of several types); `resource` with `connection_field=` lists the chosen connection's `list()` (GET `/api/connections/{name}/resources`).
+- Widgets: `connection` takes `connector="a,b"` (any of several types); `resource` with `connection_field=` lists the chosen connection's `list()` (GET `/api/connections/{name}/resources`); `code` with `language="python"|"sql"` is a code editor (Custom Code, SQL Query, SQL Transform).
 
 ### Run outputs and profiling
 

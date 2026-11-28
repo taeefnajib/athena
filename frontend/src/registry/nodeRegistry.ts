@@ -18,6 +18,8 @@ export type ConfigField = FieldBase & (
   | { type: 'connection'; default: string; connector?: string; empty_label?: string }
   /** A resource (endpoint, table, ...) of the connection held in the `connection_field` field. */
   | { type: 'resource'; default: string; connection_field?: string }
+  /** Code with syntax highlighting (CodeMirror). */
+  | { type: 'code'; default: string; language?: 'python' | 'sql' }
 )
 
 /** Port types are open strings: plugins can introduce new ones. Built-ins include dataset, X_train, model, … */

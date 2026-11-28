@@ -58,7 +58,7 @@ class ParquetLoader:
     inputs=[Port("in1", "dataset"), Port("in2", "dataset", optional=True)],
     outputs=[Port("dataset", "dataset")],
     fields={
-        "query": ui("SQL", widget="textarea", mono=True,
+        "query": ui("SQL", widget="code", language="sql",
                     help="Connected inputs are tables in1 and in2. You can also read files directly: "
                          "SELECT * FROM 'data/*.parquet' or read_csv('file.csv')."),
     },
