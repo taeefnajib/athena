@@ -129,6 +129,7 @@ Layout (left → right): logo · Run · Stop · | · Undo · Redo · | · Save �
 - Stop is disabled while `status !== 'running'`.
 - Status pill uses an animated pulsing dot when running.
 - Status colors come from CSS vars (`--success`, `--error`, `--running`, `--text-muted`).
+- The logo is `public/logo-mark.png` (favicons are next to it in `public/`; the README logos and screenshots live in `docs/assets/`). The node/edge stats show only on wide screens (`2xl`) so the bar fits at 1440 px.
 
 ### LeftSidebar (Node Library)
 - Search input at the top, debounced 150ms, matches against `label` and `description`.

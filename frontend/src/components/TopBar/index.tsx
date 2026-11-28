@@ -71,12 +71,7 @@ export function TopBar({ onRun, onStop }: TopBarProps) {
     }}>
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <polygon points="7,1 13,4.5 13,9.5 7,13 1,9.5 1,4.5" stroke="white" strokeWidth="1.5" fill="none"/>
-            <circle cx="7" cy="7" r="2" fill="white"/>
-          </svg>
-        </div>
+        <img src="/logo-mark.png" alt="" width={28} height={28} style={{ display: 'block' }} />
         <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)' }}>Athena</span>
       </div>
 
@@ -114,7 +109,7 @@ export function TopBar({ onRun, onStop }: TopBarProps) {
       <div style={{ flex: 1 }} />
 
       {/* Stats */}
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 10, marginRight: 8 }}>
+      <div className="hidden 2xl:flex" style={{ fontSize: 11, color: 'var(--text-muted)', gap: 10, marginRight: 8, whiteSpace: 'nowrap' }}>
         <span>{nodes.length} nodes</span>
         <span>{edges.length} edges</span>
       </div>
