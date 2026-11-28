@@ -145,7 +145,7 @@ def test_api(data_dir: Path):
     listed = client.get("/api/schedules").json()
     assert [s["name"] for s in listed["schedules"]] == ["Nightly"] and listed["scheduler_enabled"] is True
     z = zipfile.ZipFile(io.BytesIO(client.get("/api/schedules/Nightly/export", params={"target": "dagster"}).content))
-    assert sorted(z.namelist()) == ["job/README.md", "job/job_dagster.py", "job/job_pipeline.py"]
+    assert sorted(z.namelist()) == ["job/README.md", "job/job_dagster.py", "job/job_pipeline.py", "job/job_steps.py"]
     assert "cron_schedule='@daily'" in z.read("job/job_dagster.py").decode()
     assert client.post("/api/schedules/nope/run").status_code == 404
     assert client.delete("/api/schedules/Nightly").json() == {"ok": True}
@@ -182,50 +182,86 @@ async def test_retraining_triggered_by_drift(data_dir: Path):
 
 
 STUBS = {
-    "airflow/__init__.py": '''
+    # Just enough of Airflow and Dagster to load the generated files and run their tasks in dependency order.
+    "airflow/__init__.py": """
 REGISTRY = []
 class DAG:
-    def __init__(self, **kw): self.kw = kw; REGISTRY.append(self)
+    def __init__(self, **kw): self.kw = kw; self.tasks = {}; self.deps = []; REGISTRY.append(self)
     def __enter__(self): return self
     def __exit__(self, *a): return False
-''',
+""",
+    "airflow/exceptions.py": "class AirflowSkipException(Exception): pass\n",
     "airflow/operators/__init__.py": "",
-    "airflow/operators/python.py": '''
+    "airflow/operators/python.py": """
 import airflow
 class PythonOperator:
-    def __init__(self, task_id, python_callable): airflow.REGISTRY[-1].task = python_callable
-''',
-    "dagster.py": '''
+    def __init__(self, task_id, python_callable, op_kwargs):
+        self.task_id, self.fn, self.kwargs, self.dag = task_id, python_callable, op_kwargs, airflow.REGISTRY[-1]
+        self.dag.tasks[task_id] = self
+    def __rshift__(self, other): self.dag.deps.append((self.task_id, other.task_id)); return other
+""",
+    "dagster.py": """
 class DefaultScheduleStatus: RUNNING = "running"
-OPS = []
-def op(fn): OPS.append(fn); return fn
-def job(name, description): return lambda fn: fn
+class Nothing: pass
+class In:
+    def __init__(self, t): pass
+class Out:
+    def __init__(self, t, is_required=True): pass
+class Output:
+    def __init__(self, value): self.value = value
+CALLS = []
+class _Op:
+    def __init__(self, fn, name, ins): self.fn, self.name, self.ins = fn, name, ins
+    def __call__(self, **after): CALLS.append((self, list(after.values()))); return self.name
+def op(name, ins, out): return lambda fn: _Op(fn, name, ins)
+def job(name, description):
+    def wrap(fn): fn(); return fn
+    return wrap
 class ScheduleDefinition:
     def __init__(self, job, cron_schedule, default_status): self.cron = cron_schedule
 class Definitions:
     def __init__(self, jobs, schedules): self.schedules = schedules
-''',
+""",
 }
 
-RUNNER = '''
-import importlib.util, sys
+RUNNER = """
+import importlib.util, sys, types
 spec = importlib.util.spec_from_file_location("orch", sys.argv[1])
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+state = {}
 if sys.argv[2] == "airflow":
     import airflow
+    from airflow.exceptions import AirflowSkipException
     dag = airflow.REGISTRY[-1]
     print("SCHEDULE", dag.kw["schedule"], dag.kw["catchup"], dag.kw["max_active_runs"])
-    task = dag.task
+    for tid, task in dag.tasks.items():  # NODES is in run order
+        ups = [a for a, b in dag.deps if b == tid]
+        if any(state[u] != "success" for u in ups):
+            state[tid] = "upstream_" + ("failed" if any(state[u].endswith("failed") for u in ups) else "skipped")
+            continue
+        try:
+            task.fn(**task.kwargs, run_id="run1"); state[tid] = "success"
+        except AirflowSkipException:
+            state[tid] = "skipped"
+        except RuntimeError as exc:
+            state[tid] = "failed"; print("FAILED", tid, exc)
 else:
     import dagster
     print("SCHEDULE", mod.defs.schedules[0].cron)
-    task = dagster.OPS[-1]
-try:
-    task()
-    print("TASK OK")
-except RuntimeError as exc:
-    print("TASK FAILED", exc)
-'''
+    produced = set()
+    for op, after in dagster.CALLS:
+        if any(a not in produced for a in after):
+            state[op.name] = "skipped"; continue
+        try:
+            ctx = types.SimpleNamespace(run_id="run1", log=types.SimpleNamespace(info=print))
+            if any(isinstance(o, dagster.Output) for o in op.fn(ctx)):
+                produced.add(op.name); state[op.name] = "success"
+            else:
+                state[op.name] = "skipped"
+        except RuntimeError as exc:
+            state[op.name] = "failed"; print("FAILED", op.name, exc)
+print("STATES", " ".join(f"{k}={v}" for k, v in state.items()))
+"""
 
 
 @pytest.mark.parametrize("target", ["airflow", "dagster"])
@@ -254,13 +290,42 @@ def test_orchestrator_exports_run_the_pipeline(tmp_path: Path, target: str):
         return proc.stdout, out
 
     stdout, out = run("columns_checked >= 2", "stop", "pass.csv")
-    assert "SCHEDULE 15 3 * * *" in stdout and "TASK OK" in stdout and out.exists()
+    assert "SCHEDULE 15 3 * * *" in stdout and out.exists()
+    assert "STATES step_csv=success step_m=success step_gate=success step_exp=success" in stdout  # one task per node
     if target == "airflow":
         assert "False 1" in stdout  # catchup off, never overlapping
     stdout, out = run("columns_checked > 100", "skip", "skip.csv")
-    assert "TASK OK" in stdout and not out.exists()  # skipped: the task ends successfully, nothing after the gate
+    assert "step_gate=skipped step_exp=" in stdout and "FAILED" not in stdout and not out.exists()  # skipped, not failed
     stdout, out = run("columns_checked > 100", "stop", "stop.csv")
-    assert "TASK FAILED Quality gate failed" in stdout and not out.exists()
+    assert "step_gate=failed" in stdout and "Quality gate failed" in stdout and not out.exists()
+
+
+def test_steps_module_matches_the_script(tmp_path: Path, monkeypatch):
+    """The per-node steps, run in order through their artifact files, compute what the single script computes."""
+    import pickle
+
+    from athena.core.codegen import pipeline_to_python
+    from athena.core.orchestrator_steps import pipeline_to_steps
+    from athena.schemas.pipeline import PipelineSpec
+    backend = Path(__file__).parents[1]
+    spec = PipelineSpec.model_validate({"version": 2, "name": "steps", "nodes": [
+        _n("csv", "csv_loader", path=str(backend / "data.csv")), _n("imp", "imputer", strategy="median"), _n("tt", "train_test"),
+        _n("rf", "rf", n_estimators=10), _n("met", "metrics")], "edges": [
+        _e("a", "csv", "imp"), _e("b", "imp", "tt"), _e("c", "tt", "rf", 0, 0), _e("d", "tt", "rf", 1, 1),
+        _e("e", "rf", "met", 0, 0), _e("f", "tt", "met", 2, 1), _e("g", "tt", "met", 3, 2)]})
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ATHENA_ARTIFACTS", str(tmp_path / "artifacts"))
+    script: dict = {"__name__": "__main__"}
+    exec(compile(pipeline_to_python(spec), "pipeline.py", "exec"), script)  # noqa: S102 - the export under test
+    steps_src = pipeline_to_steps(spec, "steps")
+    (tmp_path / "steps_mod.py").write_text(steps_src, encoding="utf-8")
+    proc = subprocess.run([sys.executable, "steps_mod.py"], cwd=tmp_path, capture_output=True, text=True, timeout=300,
+                          env={**__import__("os").environ, "ATHENA_ARTIFACTS": str(tmp_path / "artifacts")}, check=False)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    run_dir = next((tmp_path / "artifacts" / "steps").iterdir())
+    with (run_dir / "report_met.pkl").open("rb") as fh:
+        assert pickle.load(fh) == script["report_met"]
+    assert {p.stem for p in run_dir.iterdir()} >= {"df_csv", "df_imp", "X_train_tt", "model_rf", "report_met"}
 
 
 def test_next_run_is_in_the_future(data_dir: Path):

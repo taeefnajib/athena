@@ -9,8 +9,8 @@ const FORMATS = [
   { id: 'python',   label: 'Python Script',       icon: '🐍', desc: 'Clean pandas + scikit-learn code' },
   { id: 'notebook', label: 'Jupyter Notebook',     icon: '📓', desc: 'Interactive .ipynb with cells' },
   { id: 'json',     label: 'Pipeline JSON',        icon: '⚙',  desc: 'Serialized pipeline configuration' },
-  { id: 'airflow',  label: 'Airflow DAG',          icon: '🌀', desc: 'The script plus a DAG running it on the schedule below (.zip)' },
-  { id: 'dagster',  label: 'Dagster job',          icon: '◆',  desc: 'The script plus a job and schedule running it (.zip)' },
+  { id: 'airflow',  label: 'Airflow DAG',          icon: '🌀', desc: 'A DAG with one task per node, on the schedule below (.zip)' },
+  { id: 'dagster',  label: 'Dagster job',          icon: '◆',  desc: 'A job with one op per node, and its schedule (.zip)' },
 ]
 
 const FILENAMES: Record<string, string> = { python: 'pipeline.py', notebook: 'pipeline.ipynb', json: 'pipeline.json', airflow: 'pipeline_airflow.zip', dagster: 'pipeline_dagster.zip' }
