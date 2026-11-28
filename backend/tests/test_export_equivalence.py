@@ -324,7 +324,8 @@ def test_dataset_snapshot(tmp_path: Path):
 def test_every_template_is_exercised():
     """Runs last: every node type with an export template appeared in an equivalence pipeline above,
     except the ones that need external services or an extra (tested in their own modules)."""
-    elsewhere = {"db_connector", "storage_loader", "automl", "mlflow_register", "mlflow_load", "transformer_load"}
+    elsewhere = {"db_connector", "storage_loader", "automl", "mlflow_register", "mlflow_load", "transformer_load",
+                 "saas_fetch"}  # saas_fetch: tests/test_saas.py (needs its mock servers)
     templated = {t for t, m in NODE_META.items() if m.code is not None and not t.startswith("test_plugin")}
     missing = templated - COVERED - elsewhere
     assert not missing, f"no equivalence test for: {sorted(missing)}"

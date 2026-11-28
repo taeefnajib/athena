@@ -115,6 +115,8 @@ Node specs come from the backend node SDK. `registry/nodeRegistry.ts` holds only
 
 Connection validity is checked in `lib/validation.ts` against the loaded specs.
 
+Form widgets `connection` (`connector` may be a comma-separated list of types) and `resource` (`connection_field` names the sibling connection field; `components/RightSidebar/ResourceField.tsx` loads its resources and falls back to a text box).
+
 ---
 
 ## 6. Components — UX rules per area

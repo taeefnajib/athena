@@ -148,6 +148,15 @@ Click **Connections** in the top bar to save a database connection (PostgreSQL, 
 - **SQL Transform** runs SQL on your data with DuckDB: connected inputs are tables `in1` and `in2`, and you can query files directly (`SELECT * FROM 'data/*.parquet'`). Filter, join, aggregate, window functions.
 - **Cloud File Loader** reads CSV, Parquet, JSON Lines or Excel from Amazon S3 (and S3-compatible stores such as MinIO and Cloudflare R2), Google Cloud Storage, Azure Blob / Data Lake, or a local folder. Save the bucket under **Connections → Object Storage** (with **Test connection** and a file browser); paths can be folders or globs like `sales/2026/*.parquet`. Install the driver you need: `uv sync --extra s3` (or `gcs`, `azure`). Exported code reads the same URL with pandas and takes credentials from the environment.
 
+### SaaS apps
+
+Pull data from **GitHub, Stripe, HubSpot, Jira, Zendesk or Shopify** without working out their endpoints and paging (`uv sync --extra api`):
+
+1. **Connections → ＋ GitHub** (or another app): enter just what that app needs (a token; Jira and Zendesk also take your site and email; Shopify your shop name) and **Test connection**. Secrets go to your OS keychain or an `env://VAR` reference.
+2. Add a **SaaS Fetch** node, choose the connection, then pick a **Resource** from the list (GitHub issues, Stripe invoices, HubSpot deals, Jira issues…). Some resources take **Parameters**, e.g. `{"owner": "dlt-hub", "repo": "dlt"}` for GitHub issues or `{"jql": "project = ABC"}` for Jira.
+
+Each app's base URL, authentication and pagination are built in. They follow the apps' public API documentation and are tested against local mock servers, not the live services; please report any that don't work with your account. Use **API Fetch** for any other REST API.
+
 ### REST APIs
 
 Pull JSON from any REST API with the **API Fetch** node (`uv sync --extra api`, which installs [dlt](https://dlthub.com)).
